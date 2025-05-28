@@ -137,36 +137,36 @@ ssize_t tcp_read(conn *c, void *buf, size_t count) {
 
 ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
     printf("[yedam] - memcached.c :: tcp_sendmsg()\n");
-    //1. msg_name : 주소 정보들
+    ////1. msg_name : 주소 정보들
 
-    if(msg->msg_name && msg->msg_namelen > 0){ //ip출력하기 위함
-        struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;
-        char ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &(addr->sin_addr), ip, INET_ADDRSTRLEN);
-        printf("msg_name (IP addr) : %s, (port) : %d\n", ip, ntohs(addr->sin_port));
-    }else{
-        printf("msg_name: NULL\n");
-    }
+    // if(msg->msg_name && msg->msg_namelen > 0){ //ip출력하기 위함
+    //     struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;
+    //     char ip[INET_ADDRSTRLEN];
+    //     inet_ntop(AF_INET, &(addr->sin_addr), ip, INET_ADDRSTRLEN);
+    //     printf("msg_name (IP addr) : %s, (port) : %d\n", ip, ntohs(addr->sin_port));
+    // }else{
+    //     printf("msg_name: NULL\n");
+    // }
 
-    printf("msg_namelen: %d\n", msg->msg_namelen);
+    // printf("msg_namelen: %d\n", msg->msg_namelen);
 
-    // 2. msg_iov: 데이터 버퍼
-    printf("msg_iovlen: %d\n", msg->msg_iovlen);
-    for (int i = 0; i < msg->msg_iovlen; i++) {
-        struct iovec *iov = &msg->msg_iov[i];
-        printf("msg_iov[%d]: %.*s (length: %zu)\n",
-               i, (int)iov->iov_len, (char *)iov->iov_base, iov->iov_len);
-    }
+    // // 2. msg_iov: 데이터 버퍼
+    // printf("msg_iovlen: %d\n", msg->msg_iovlen);
+    // for (int i = 0; i < msg->msg_iovlen; i++) {
+    //     struct iovec *iov = &msg->msg_iov[i];
+    //     printf("msg_iov[%d]: %.*s (length: %zu)\n",
+    //            i, (int)iov->iov_len, (char *)iov->iov_base, iov->iov_len);
+    // }
 
-    // 3. msg_control: 제어 메시지 (예: 파일 디스크립터 전달)
-    if (msg->msg_control && msg->msg_controllen > 0) {
-        printf("msg_control: present (%u bytes)\n", (unsigned int)msg->msg_controllen);
-        // 자세한 파싱은 cmsg 관련 로직이 필요함
-    } else {
-        printf("msg_control: NULL or empty\n");
-    }
+    // // 3. msg_control: 제어 메시지 (예: 파일 디스크립터 전달)
+    // if (msg->msg_control && msg->msg_controllen > 0) {
+    //     printf("msg_control: present (%u bytes)\n", (unsigned int)msg->msg_controllen);
+    //     // 자세한 파싱은 cmsg 관련 로직이 필요함
+    // } else {
+    //     printf("msg_control: NULL or empty\n");
+    // }
 
-    printf("msg_flags: %d\n", msg->msg_flags);
+    // printf("msg_flags: %d\n", msg->msg_flags);
     assert (c != NULL);
     return sendmsg(c->sfd, msg, flags);
 }
