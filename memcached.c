@@ -128,7 +128,9 @@ enum transmit_result {
 
 /* Default methods to read from/ write to a socket */
 ssize_t tcp_read(conn *c, void *buf, size_t count) {
-    printf("[yedam] - memcached.c :: tcp_read()\n");
+    if (settings.verbose) {
+        printf("[yedam] - memcached.c :: tcp_read()\n");
+    }
     assert (c != NULL);
     return read(c->sfd, buf, count);
 }
@@ -136,7 +138,9 @@ ssize_t tcp_read(conn *c, void *buf, size_t count) {
     
 
 ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
-    printf("[yedam] - memcached.c :: tcp_sendmsg()\n");
+    if (settings.verbose) {
+        printf("[yedam] - memcached.c :: tcp_sendmsg()\n");
+    }
     ////1. msg_name : 주소 정보들
 
     // if(msg->msg_name && msg->msg_namelen > 0){ //ip출력하기 위함
@@ -172,7 +176,9 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
 }
 
 ssize_t tcp_write(conn *c, void *buf, size_t count) {
-    printf("[yedam] - memcached.c :: tcp_write()\n");
+    if (settings.verbose) {
+        printf("[yedam] - memcached.c :: tcp_write()\n");
+    }
     assert (c != NULL);
     return write(c->sfd, buf, count);
 }
@@ -789,7 +795,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         ssl_init_conn(c, ssl);
         c->ssl_enabled = true;
     } else {
-        printf("[yedam] memcached.c :: conn_new(), c->read = tcp_read\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: conn_new(), c->read = tcp_read\n");
+        }
         c->read = tcp_read;
         c->sendmsg = tcp_sendmsg;
         c->write = tcp_write;
@@ -797,7 +805,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     }
 
     if (IS_UDP(transport)) {
-        printf("[yedam] memcached.c :: conn_new(), try_read_command_udp\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: conn_new(), try_read_command_udp\n");
+        }
         c->try_read_command = try_read_command_udp;
     } else {
         //printf("[yedam] memcached.c :: conn_new()-[11]\n");
@@ -806,11 +816,15 @@ conn *conn_new(const int sfd, enum conn_states init_state,
                 ////printf("[yedam] memcached.c :: conn_new()-[11], ascii_prot\n");
                 if (settings.auth_file == NULL) {
                     c->authenticated = true;
-                    printf("[yedam] memcached.c :: conn_new(), try_read_command_ascii\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: conn_new(), try_read_command_ascii\n");
+                    }
                     c->try_read_command = try_read_command_ascii;
                 } else {
                     c->authenticated = false;
-                    printf("[yedam] memcached.c :: conn_new(), try_read_command_asciiauth\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: conn_new(), try_read_command_asciiauth\n");
+                    }
                     c->try_read_command = try_read_command_asciiauth;
                 }
                 break;
@@ -818,16 +832,22 @@ conn *conn_new(const int sfd, enum conn_states init_state,
                 ////printf("[yedam] memcached.c :: conn_new()-[11], binary_prot\n"); 
                 // binprot handles its own authentication via SASL parsing.
                 c->authenticated = false;
-                printf("[yedam] memcached.c :: conn_new(), try_read_command_binary\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: conn_new(), try_read_command_binary\n");
+                }
                 c->try_read_command = try_read_command_binary;
                 break;
             case negotiating_prot: //여기 실행됨
-                printf("[yedam] memcached.c :: conn_new(), try_read_command_negotiate\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: conn_new(), try_read_command_negotiate\n");
+                }
                 c->try_read_command = try_read_command_negotiate; 
                 break;
 #ifdef PROXY
             case proxy_prot:
-                printf("[yedam] memcached.c :: conn_new(), try_read_command_proxy\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: conn_new(), try_read_command_proxy\n");
+                }
                 c->try_read_command = try_read_command_proxy;
                 break;
 #endif
@@ -1468,7 +1488,9 @@ void append_stats(const char *key, const uint16_t klen,
 }
 
 static void reset_cmd_handler(conn *c) {
-    printf("[yedam] memcached.c :: reset_cmd_handler\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: reset_cmd_handler\n");
+    }
     c->cmd = -1;
     c->substate = bin_no_state;
     if (c->item != NULL) {
@@ -1484,13 +1506,19 @@ static void reset_cmd_handler(conn *c) {
     }
     //상황에 따라 다르게 들어감, 주로 resp_head 아니면 else에 들어감
     if (c->rbytes > 0) {
-        printf("[yedam] memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
+        }
         conn_set_state(c, conn_parse_cmd);
     } else if (c->resp_head) {
-        printf("[yedam] memcached.c :: reset_cmd_handler4, c->resp_head\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: reset_cmd_handler4, c->resp_head\n");
+        }
         conn_set_state(c, conn_mwrite);
     } else { //여기 들어감
-        printf("[yedam] memcached.c :: reset_cmd_handler4, else\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: reset_cmd_handler4, else\n");
+        }
         conn_set_state(c, conn_waiting);
     }
 }
@@ -1631,7 +1659,9 @@ static int _store_item_copy_data(int comm, item *old_it, item *new_it, item *add
 enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const uint32_t hv, int *nbytes, uint64_t *cas, uint64_t cas_in, bool cas_stale) {
     //여기 자체가 데이터를 저장하기 위해서 찾는 공간
     char *key = ITEM_key(it);
-    printf("[yedam] memcached.c :: do_store_item()\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: do_store_item()\n");
+    }
     item *old_it = do_item_get(key, it->nkey, hv, t, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
 
@@ -1784,9 +1814,13 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) { //[yedam] 여기서 데이터 저장했다고 말해주는듯
-            printf("[yedam] memcached.c :: do_store_item() - call do_item_link\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: do_store_item() - call do_item_link\n");
+            }
             do_item_link(it, hv, cas_in);
-            printf("[yedam] - memcached.c :: do_store_item, STORED ITEM : key : %s\n", key);
+            if (settings.verbose) {
+                printf("[yedam] - memcached.c :: do_store_item, STORED ITEM : key : %s\n", key);
+            }
             stored = STORED;
         }
     }
@@ -2270,7 +2304,9 @@ item* limited_get(const char *key, size_t nkey, LIBEVENT_THREAD *t, uint32_t exp
     if (should_touch) {
         it = item_touch(key, nkey, exptime, t);
     } else {
-        printf("[yedam] memcached.c :: limited_get()\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: limited_get()\n");
+        }
         it = item_get(key, nkey, t, do_update); //여기서 thread.c -> item_get()으로 간다
     }
     if (it && it->refcount > IT_REFCOUNT_LIMIT) {
@@ -2321,7 +2357,9 @@ enum delta_result_type do_add_delta(LIBEVENT_THREAD *t, const char *key, const s
     uint64_t value;
     int res;
     item *it;
-    printf("[yedam] memcached.c :: do_add_delta()\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: do_add_delta()\n");
+    }
     it = do_item_get(key, nkey, hv, t, DONT_UPDATE);
     if (!it) {
         return DELTA_ITEM_NOT_FOUND;
@@ -2430,15 +2468,21 @@ static int try_read_command_negotiate(conn *c) {
     assert(c->protocol == negotiating_prot);
     assert(c->rcurr <= (c->rbuf + c->rsize));
     assert(c->rbytes > 0);
-    printf("[yedam] memcached.c :: try_read_command_negotiate()\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: try_read_command_negotiate()\n");
+    }
     if ((unsigned char)c->rbuf[0] == (unsigned char)PROTOCOL_BINARY_REQ) {
-        printf("[yedam] memcached.c :: try_read_command_negotiate()1\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: try_read_command_negotiate()1\n");
+        }
         c->protocol = binary_prot;
         c->try_read_command = try_read_command_binary;
     } else {
         // authentication doesn't work with negotiated protocol.
         c->protocol = ascii_prot;
-        printf("[yedam] memcached.c :: try_read_command_negotiate()2\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: try_read_command_negotiate()2\n");
+        }
         c->try_read_command = try_read_command_ascii;
     }
 
@@ -2459,7 +2503,9 @@ static int try_read_command_udp(conn *c) {
         return try_read_command_binary(c);
     } else {
         c->protocol = ascii_prot;
-        printf("[yedam] memcached.c :: try_read_command_udp()\n");
+        if (settings.verbose) {
+            printf("[yedam] memcached.c :: try_read_command_udp()\n");
+        }
         return try_read_command_ascii(c);
     }
 }
@@ -2514,7 +2560,9 @@ static enum try_read_result try_read_udp(conn *c) {
  * @return enum try_read_result
  */
 static enum try_read_result try_read_network(conn *c) {
-    printf("[yedam] memcached.c :: try_read_network\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: try_read_network\n");
+    }
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
     int num_allocs = 0;
@@ -2551,14 +2599,16 @@ static enum try_read_result try_read_network(conn *c) {
         }
 
         int avail = c->rsize - c->rbytes;
-        printf("avail : %d\n", avail);
-        printf("c->rsize : %d\n", c->rsize);
-        printf("c->rbytes : %d\n", c->rbytes);
-        printf("[yedam] memcached.c :: try_read_network() calling read()\n");
-        // for(int i=0; i< avail; i++){
-        //     printf("%c", c->rbuf[i]);
-        // }
-        // printf("\n 끝\n");
+        if (settings.verbose) {
+            printf("avail : %d\n", avail);
+            printf("c->rsize : %d\n", c->rsize);
+            printf("c->rbytes : %d\n", c->rbytes);
+            printf("[yedam] memcached.c :: try_read_network() calling read()\n");
+            // for(int i=0; i< avail; i++){
+            //     printf("%c", c->rbuf[i]);
+            // }
+            // printf("\n 끝\n");
+        }
         res = c->read(c, c->rbuf + c->rbytes, avail);
         if (res > 0) {
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -2584,7 +2634,9 @@ static enum try_read_result try_read_network(conn *c) {
             return READ_ERROR;
         }
     }
-    printf("[yedam] memcached.c :: try_read_network() out\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: try_read_network() out\n");
+    }
     return gotdata;
 }
 
@@ -2782,7 +2834,9 @@ static enum transmit_result transmit(conn *c) {
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
     struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
     int iovused = 0;
-    printf("[yedam] memcached.c :: transmit\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: transmit\n");
+    }
 
     // init the msg.
     memset(&msg, 0, sizeof(struct msghdr));
@@ -2799,7 +2853,9 @@ static enum transmit_result transmit(conn *c) {
     // Alright, send.
     ssize_t res;
     msg.msg_iovlen = iovused;
-    printf("[yedam] memcached.c :: transmit2\n");
+    if (settings.verbose) {
+        printf("[yedam] memcached.c :: transmit2\n");
+    }
     res = c->sendmsg(c, &msg, 0);
     if (res >= 0) {
         pthread_mutex_lock(&c->thread->stats.mutex);
@@ -3078,7 +3134,9 @@ static void drive_machine(conn *c) {
         //printf("[yedam] memcached.c :: drive_machine()[2]\n");
         switch(c->state) {
         case conn_listening:
-            printf("[yedam] memcached.c :: drive_machine - conn_listening\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_listening\n");
+            }
             addrlen = sizeof(addr);
 #ifdef HAVE_ACCEPT4
             if (use_accept4) { //여기 들어감
@@ -3150,7 +3208,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_waiting:
-            printf("[yedam] memcached.c :: drive_machine - conn_waiting\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_waiting\n");
+            }
             rbuf_release(c);
             if (!update_event(c, EV_READ | EV_PERSIST)) {
                 if (settings.verbose > 0)
@@ -3164,7 +3224,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_read:
-            printf("[yedam] memcached.c :: drive_machine - conn_read\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_read\n");
+            }
             if (!IS_UDP(c->transport)) { //여기로 들어감
                 // Assign a read buffer if necessary.
                 if (!rbuf_alloc(c)) { //여기는 안들어감
@@ -3195,7 +3257,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_parse_cmd:
-            printf("[yedam] memcached.c :: drive_machine - conn_parse_cmd\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_parse_cmd\n");
+            }
             c->noreply = false;
             if (c->try_read_command(c) == 0) {
                 /* we need more data! */
@@ -3210,13 +3274,17 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_new_cmd:
-            printf("[yedam] memcached.c :: drive_machine - conn_new_cmd\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_new_cmd\n");
+            }
             /* Only process nreqs at a time to avoid starving other
                connections */
 
             --nreqs;
             if (nreqs >= 0) {
-                printf("[yedam] memcached.c :: drive_machine - conn_new_cmd3\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine - conn_new_cmd3\n");
+                }
                 reset_cmd_handler(c); //여기로 들어감
             } else if (c->resp_head) { //여기 안들어감
                 //printf("[yedam] memcached.c :: drive_machine - conn_new_cmd sets state conn_mwrite");
@@ -3246,9 +3314,13 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_nread:
-            printf("[yedam] memcached.c :: drive_machine - conn_nread\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_nread\n");
+            }
             if (c->rlbytes == 0) {
-                printf("[yedam] memcached.c :: drive_machine - conn_nread, complete_nread\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine - conn_nread, complete_nread\n");
+                }
                 complete_nread(c);
                 break;
             }
@@ -3264,27 +3336,39 @@ static void drive_machine(conn *c) {
 
             if (c->item_malloced || ((((item *)c->item)->it_flags & ITEM_CHUNKED) == 0) ) {
                 /* first check if we have leftovers in the conn_read buffer */
-                printf("[yedam] memcached.c :: drive_machine - conn_nread2\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine - conn_nread2\n");
+                }
                 if (c->rbytes > 0) {
-                    printf("[yedam] memcached.c :: drive_machine - conn_nread3\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: drive_machine - conn_nread3\n");
+                    }
                     int tocopy = c->rbytes > c->rlbytes ? c->rlbytes : c->rbytes;
-                    printf("[yedam] memcached.c :: drive_machine - conn_nread3, tocopy: %d\n", tocopy);
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: drive_machine - conn_nread3, tocopy: %d\n", tocopy);
+                    }
                     memmove(c->ritem, c->rcurr, tocopy);
                     c->ritem += tocopy;
                     c->rlbytes -= tocopy;
                     c->rcurr += tocopy;
                     c->rbytes -= tocopy;
                     if (c->rlbytes == 0) {
-                        printf("[yedam] memcached.c :: drive_machine - conn_nread3-1\n");
+                        if (settings.verbose) {
+                            printf("[yedam] memcached.c :: drive_machine - conn_nread3-1\n");
+                        }
                         break;
                     }
                 }
 
                 /*  now try reading from the socket */
-                printf("[yedam] memcached.c :: drive_machine - conn_nread4\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine - conn_nread4\n");
+                }
                 res = c->read(c, c->ritem, c->rlbytes);
                 if (res > 0) {
-                    printf("[yedam] memcached.c :: drive_machine - conn_nread5\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: drive_machine - conn_nread5\n");
+                    }
                     pthread_mutex_lock(&c->thread->stats.mutex);
                     c->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&c->thread->stats.mutex);
@@ -3343,7 +3427,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_swallow:
-            printf("[yedam] memcached.c :: drive_machine - conn_swallow\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_swallow\n");
+            }
             /* we are reading sbytes and throwing them away */
             if (c->sbytes <= 0) {
                 conn_set_state(c, conn_new_cmd);
@@ -3391,7 +3477,9 @@ static void drive_machine(conn *c) {
 
         case conn_write:
         case conn_mwrite:
-            printf("[yedam] memcached.c :: drive_machine - conn_write, conn_mwrite\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_write, conn_mwrite\n");
+            }
             /* have side IO's that must process before transmit() can run.
              * remove the connection from the worker thread and dispatch the
              * IO queue
@@ -3399,7 +3487,9 @@ static void drive_machine(conn *c) {
                 해당 연결을 워커 스레드에서 제거하고, I/O 큐로 디스패치한다.
              */
             if (c->resps_suspended) {
-                printf("[yedam] memcached.c :: drive_machine, conn_mwrite0\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine, conn_mwrite0\n");
+                }
                 LIBEVENT_THREAD *t = c->thread;
                 // FIXME: carefully check or document somewhere that submit
                 // cannot resume a connection in-line with submission.
@@ -3412,11 +3502,15 @@ static void drive_machine(conn *c) {
                 stop = true;
                 break;
             }
-            printf("[yedam] memcached.c :: drive_machine, conn_mwrite1\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine, conn_mwrite1\n");
+            }
             switch (!IS_UDP(c->transport) ? transmit(c) : transmit_udp(c)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (c->state == conn_mwrite) { //요기 들어감
-                    printf("[yedam] memcached.c :: drive_machine, conn_mwrite2\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: drive_machine, conn_mwrite2\n");
+                    }
                     // Free up IO wraps and any half-uploaded items.
                     conn_release_items(c);
                     conn_set_state(c, conn_new_cmd);
@@ -3424,12 +3518,16 @@ static void drive_machine(conn *c) {
                         conn_set_state(c, conn_closing);
                     }
                 } else {
-                    printf("[yedam] memcached.c :: drive_machine, conn_mwrite3\n");
+                    if (settings.verbose) {
+                        printf("[yedam] memcached.c :: drive_machine, conn_mwrite3\n");
+                    }
                     if (settings.verbose > 0)
                         fprintf(stderr, "Unexpected state %d\n", c->state);
                     conn_set_state(c, conn_closing);
                 }
-                printf("[yedam] memcached.c :: drive_machine, conn_mwrite4\n");
+                if (settings.verbose) {
+                    printf("[yedam] memcached.c :: drive_machine, conn_mwrite4\n");
+                }
                 break;
 
             case TRANSMIT_INCOMPLETE:
@@ -3443,7 +3541,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_closing:
-            printf("[yedam] memcached.c :: drive_machine - conn_closing\n");
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_closing\n");
+            }
             if (IS_UDP(c->transport))
                 conn_cleanup(c);
             else
@@ -3452,30 +3552,40 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_closed:
-            printf("[yedam] memcached.c :: drive_machine - conn_closed\n");    
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_closed\n");    
+            }
             /* This only happens if dormando is an idiot. */
             abort();
             break;
 
         case conn_watch:
-            printf("[yedam] memcached.c :: drive_machine - conn_watch\n");    
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_watch\n");  
+            }  
             /* We handed off our connection to the logger thread. */
             stop = true;
             break;
         case conn_io_queue:
-            printf("[yedam] memcached.c :: drive_machine - conn_io_queue\n");    
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_io_queue\n");    
+            }
             /* Woke up while waiting for an async return, but not ready. */
             event_del(&c->event);
             conn_set_state(c, conn_io_pending);
             stop = true;
             break;
         case conn_io_pending:
-            printf("[yedam] memcached.c :: drive_machine - conn_io_pending\n");   
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_io_pending\n");   
+            }
             /* Should not be reachable */
             assert(false);
             break;
         case conn_io_resume:
-            printf("[yedam] memcached.c :: drive_machine - conn_io_resume\n");   
+            if (settings.verbose) {
+                printf("[yedam] memcached.c :: drive_machine - conn_io_resume\n");   
+            }
             /* Complete our queued IO's from within the worker thread. */
             conn_set_state(c, conn_mwrite);
             break;
