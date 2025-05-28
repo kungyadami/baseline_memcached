@@ -128,12 +128,16 @@ static void _finalize_mset(conn *c, int nbytes, enum store_item_type ret, uint64
 /*
  * we get here after reading the value in set/add/replace commands. The command
  * has been stored in c->cmd, and the item is ready in c->item.
+
+  * set/add/replace 명령어에서 값을 읽은 후 이 지점에 도달합니다.
+ * 명령어 종류는 c->cmd에 저장되어 있고,
+ * 저장할 아이템은 c->item에 준비되어 있습니다.
  */
 void complete_nread_ascii(conn *c) {
     assert(c != NULL);
 
-    item *it = c->item;
-    int comm = c->cmd;
+    item *it = c->item; //item은 저장할 데이터들을 뜻함 ...=_=
+    int comm = c->cmd; //명령어 종류(set?어쩌고?)
     enum store_item_type ret;
     bool is_valid = false;
     int nbytes = 0;
@@ -179,6 +183,7 @@ void complete_nread_ascii(conn *c) {
     } else {
       uint64_t cas = 0;
       c->thread->cur_sfd = c->sfd; // cuddle sfd for logging.
+      //printf("[yedam] - proto_text.c :: complete_nread_ascii(), store_item call\n");
       ret = store_item(it, comm, c->thread, &nbytes, &cas, c->cas ? c->cas : get_cas_id(), c->set_stale);
       c->cas = 0;
 
@@ -216,15 +221,19 @@ void complete_nread_ascii(conn *c) {
       } else {
           switch (ret) {
           case STORED:
-              out_string(c, "STORED");
+              printf("[yedam] - proto_text.c :: complete_nread_ascii(), STORED\n");
+              out_string(c, "STORED"); //여기서 최종 STORED를 내뱉는듯??
               break;
           case EXISTS:
+              printf("[yedam] - proto_text.c :: complete_nread_ascii(), EXISTS\n");
               out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
+              printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_FOUND\n");
               out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
+              printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_STORED\n");
               out_string(c, "NOT_STORED");
               break;
           default:
@@ -427,6 +436,7 @@ int try_read_command_asciiauth(conn *c) {
     if (authfile_check(tokens[0].value, tokens[1].value) == 1) {
         out_string(c, "STORED");
         c->authenticated = true;
+        printf("[yedam] proto_text.c :: try_read_command_asciiauth()1\n");
         c->try_read_command = try_read_command_ascii;
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.auth_cmds++;
@@ -443,6 +453,7 @@ int try_read_command_asciiauth(conn *c) {
 }
 
 int try_read_command_ascii(conn *c) {
+    printf("[yedam] proto_text.c :: try_read_command_ascii()\n");
     char *el, *cont;
 
     if (c->rbytes == 0)
@@ -489,6 +500,8 @@ int try_read_command_ascii(conn *c) {
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time;
+    printf("[yedam] proto_text.c :: try_read_command_ascii()2\n");
+    //여기서 process_command_ascii로 들어가고, 거기서 get command ... 등등
     process_command_ascii(c, c->rcurr);
 
     c->rbytes -= (cont - c->rcurr);
@@ -502,6 +515,7 @@ int try_read_command_ascii(conn *c) {
 
 static inline bool set_noreply_maybe(conn *c, token_t *tokens, size_t ntokens)
 {
+    //printf("[yedam] proto_text.c :: set_noreply_maybe()\n");
     int noreply_index = ntokens - 2;
 
     /*
@@ -575,8 +589,9 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 fail_length = true;
                 goto stop;
             }
-
+            printf("[yedam] proto_text.c :: process_get_command()\n");
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
+            //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
@@ -627,6 +642,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 
                 if (settings.verbose > 1) {
                     int ii;
+                    //printf("[yedam] proto_text.c :: process_get_command()-[1]\n");
                     fprintf(stderr, ">%d sending key ", c->sfd);
                     for (ii = 0; ii < it->nkey; ++ii) {
                         fprintf(stderr, "%c", key[ii]);
@@ -863,6 +879,7 @@ static void process_meta_command(conn *c, token_t *tokens, const size_t ntokens)
     }
 
     bool overflow; // not used here.
+    printf("[yedam] proto_text.c :: process_meta_command()\n");
     item *it = limited_get(key, nkey, c->thread, 0, false, DONT_UPDATE, &overflow);
     if (it) {
         mc_resp *resp = c->resp;
@@ -1126,8 +1143,10 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
     // I think we do, since an overflow shouldn't trigger an alloc/replace.
     bool overflow = false;
     if (!of.locked) {
+        printf("[yedam] proto_text.c :: process_mget_command()1\n");
         it = limited_get(key, nkey, c->thread, 0, false, !of.no_update, &overflow);
     } else {
+        printf("[yedam] proto_text.c :: process_mget_command()2\n");
         // If we had to lock the item, we're doing our own bump later.
         it = limited_get_locked(key, nkey, c->thread, DONT_UPDATE, &hv, &overflow);
     }
@@ -1153,6 +1172,7 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
             // I look forward to the day I get rid of this :)
             memcpy(ITEM_data(it), "\r\n", 2);
             // NOTE: This initializes the CAS value.
+            printf("[yedam] proto_text.c :: process_mget_command()\n");
             do_item_link(it, hv, of.has_cas_in ? of.cas_id_in : get_cas_id());
             item_created = true;
         }
@@ -1688,6 +1708,7 @@ static void process_mdelete_command(conn *c, token_t *tokens, const size_t ntoke
             item *new_it = item_alloc(key, nkey, of.client_flags, of.exptime, 2);
             if (new_it != NULL) {
                 memcpy(ITEM_data(new_it), "\r\n", 2);
+                //printf("[yedam] - proxy.text.c :: process_mdelete_command(), do_store_item call\n");
                 if (do_store_item(new_it, NREAD_SET, c->thread, hv, NULL, NULL,
                             of.has_cas_in ? of.cas_id_in : ITEM_get_cas(it), CAS_NO_STALE)) {
                     do_item_remove(it);
@@ -1864,6 +1885,7 @@ static void process_marithmetic_command(conn *c, token_t *tokens, const size_t n
             if (it != NULL) {
                 memcpy(ITEM_data(it), tmpbuf, vlen);
                 memcpy(ITEM_data(it) + vlen, "\r\n", 2);
+                //printf("[yedam] - proxy.text.c :: process_marithmetic_command(), do_store_item call\n");
                 if (do_store_item(it, NREAD_ADD, c->thread, hv, NULL, NULL,
                             of.has_cas_in ? of.cas_id_in : get_cas_id(), CAS_NO_STALE)) {
                     item_created = true;
@@ -1996,6 +2018,7 @@ error:
 
 
 static void process_update_command(conn *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
+    //printf("[yedam] - proto_text.c :: process_update_command()-[1]\n");
     char *key;
     size_t nkey;
     client_flags_t flags;
@@ -2006,18 +2029,18 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     item *it;
 
     assert(c != NULL);
-
+    //printf("[yedam] - proto_text.c :: process_update_command()-[2]\n");
     set_noreply_maybe(c, tokens, ntokens);
 
-    if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) {
+    if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) { //error
         out_string(c, "CLIENT_ERROR bad command line format");
         return;
     }
-
+    //printf("[yedam] - proto_text.c :: process_update_command()-[3]\n");
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
 
-    if (! (safe_strtoflags(tokens[2].value, &flags)
+    if (! (safe_strtoflags(tokens[2].value, &flags) //error
            && safe_strtol(tokens[3].value, &exptime_int)
            && safe_strtol(tokens[4].value, (int32_t *)&vlen))) {
         out_string(c, "CLIENT_ERROR bad command line format");
@@ -2025,22 +2048,23 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     }
 
     exptime = realtime(EXPTIME_TO_POSITIVE_TIME(exptime_int));
-
+    //printf("[yedam] - proto_text.c :: process_update_command()-[4]\n");
     // does cas value exist?
-    if (handle_cas) {
+    if (handle_cas) { //error
         if (!safe_strtoull(tokens[5].value, &req_cas_id)) {
             out_string(c, "CLIENT_ERROR bad command line format");
             return;
         }
     }
 
-    if (vlen < 0 || vlen > (INT_MAX - 2)) {
+    if (vlen < 0 || vlen > (INT_MAX - 2)) { //error
         out_string(c, "CLIENT_ERROR bad command line format");
         return;
     }
     vlen += 2;
-
+    //printf("[yedam] - proto_text.c :: process_update_command()-[5]\n");
     if (settings.detail_enabled) {
+        //printf("[yedam] - proto_text.c :: process_update_command()-[5-1]\n");
         stats_prefix_record_set(key, nkey);
     }
 
@@ -2061,6 +2085,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
             c->thread->stats.store_no_memory++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
         }
+        //printf("[yedam] - proto_text.c :: process_update_command()-[5-2]\n");
         LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
                 NULL, status, comm, key, nkey, 0, 0, c->sfd);
         /* swallow the data line */
@@ -2070,6 +2095,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (comm == NREAD_SET) {
+            printf("[yedam] proto_text.c :: process_update_command()\n");
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
                 item_unlink(it);
@@ -2081,7 +2107,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         return;
     }
     ITEM_set_cas(it, req_cas_id);
-
+    //printf("[yedam] - proto_text.c :: process_update_command()-[6]\n");
     c->item = it;
 #ifdef NEED_ALIGN
     if (it->it_flags & ITEM_CHUNKED) {
@@ -2094,6 +2120,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
 #endif
     c->rlbytes = it->nbytes;
     c->cmd = comm;
+    //printf("[yedam] - proto_text.c :: process_update_command()-[7]\n");
     conn_set_state(c, conn_nread);
 }
 
@@ -2316,6 +2343,7 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
         item_unlock(hv);
     } else if (strcmp(tokens[1].value, "ref") == 0) {
         // intentionally leak a reference.
+        printf("[yedam] proto_text.c :: process_debugitem_command()\n");
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
             out_string(c, "MISS");
@@ -2324,6 +2352,7 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
     } else if (strcmp(tokens[1].value, "unref") == 0) {
         // double unlink. debugger must have already ref'ed it or this
         // underflows.
+        printf("[yedam] proto_text.c :: process_debugitem_command()2\n");
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
             out_string(c, "MISS");
@@ -2877,6 +2906,7 @@ static void process_refresh_certs_command(conn *c, token_t *tokens, const size_t
 // Leaving this note here to spend more time on a fix when necessary, or if an
 // opportunity becomes obvious.
 void process_command_ascii(conn *c, char *command) {
+    printf("[yedam] proto_text.c :: process_command_ascii()\n");
 
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
@@ -2886,8 +2916,9 @@ void process_command_ascii(conn *c, char *command) {
 
     MEMCACHED_PROCESS_COMMAND_START(c->sfd, c->rcurr, c->rbytes);
 
-    if (settings.verbose > 1)
+    if (settings.verbose > 1){
         fprintf(stderr, "<%d %s\n", c->sfd, command);
+    }
 
     /*
      * for commands set/add/replace, we build an item and read the data
@@ -2941,24 +2972,27 @@ void process_command_ascii(conn *c, char *command) {
         // Various get commands are very common.
         WANT_TOKENS_MIN(ntokens, 3);
         if (strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) {
-
+            //여기에 들어가서 process_get_command() 실행한다
+            printf("[yedam] proto_text.c :: process_get_command() - get\n");
             process_get_command(c, tokens, ntokens, false, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0) {
-
+            printf("[yedam] proto_text.c :: process_get_command() - gets\n");
             process_get_command(c, tokens, ntokens, true, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gat") == 0) {
-
+            printf("[yedam] proto_text.c :: process_get_command() - gat\n");
             process_get_command(c, tokens, ntokens, false, true);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gats") == 0) {
-
+            printf("[yedam] proto_text.c :: process_get_command() - gats\n");
             process_get_command(c, tokens, ntokens, true, true);
         } else {
             out_string(c, "ERROR");
         }
     } else if (first == 's') {
+        //printf("[yedam] proto_text.c :: process_command_ascii()-first is 's'\n");
         if (strcmp(tokens[COMMAND_TOKEN].value, "set") == 0 && (comm = NREAD_SET)) {
 
             WANT_TOKENS_OR(ntokens, 6, 7);
+            //printf("[yedam] proto_text.c :: process_command_ascii()-process_update_command call\n");
             process_update_command(c, tokens, ntokens, comm, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "stats") == 0) {
 
@@ -3041,6 +3075,7 @@ void process_command_ascii(conn *c, char *command) {
         // removed > 10 years ago, etc. Keeping for compatibility reasons but
         // we should look deeper into client code and remove this.
         WANT_TOKENS_MIN(ntokens, 3);
+        printf("[yedam] proto_text.c :: process_get_command() - bget\n");
         process_get_command(c, tokens, ntokens, false, false);
 
     } else if (strcmp(tokens[COMMAND_TOKEN].value, "flush_all") == 0) {
@@ -3091,6 +3126,7 @@ void process_command_ascii(conn *c, char *command) {
             out_string(c, "ERROR");
         }
     }
+    //printf("[yedam] proto_text.c :: process_command_ascii(), return\n");
     return;
 }
 

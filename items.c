@@ -384,6 +384,7 @@ void do_item_link_fixup(item *it) {
     item **head, **tail;
     int ntotal = ITEM_ntotal(it);
     uint32_t hv = hash(ITEM_key(it), it->nkey);
+    printf("[yedam] items.c :: do_item_link_fixup()\n");
     assoc_insert(it, hv);
 
     head = &heads[it->slabs_clsid];
@@ -483,6 +484,7 @@ static void item_unlink_q(item *it) {
 }
 
 int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
+    //여기서 insert 진행하는 것 같다
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     it->it_flags |= ITEM_LINKED;
@@ -496,6 +498,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, cas);
+    printf("[yedam] items.c :: do_item_link()\n");
     assoc_insert(it, hv);
     item_link_q(it);
     refcount_incr(it);
@@ -972,6 +975,7 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
+    printf("[yedam] items.c :: do_item_get()\n");
     item *it = assoc_find(key, nkey, hv);
     if (it != NULL) {
         refcount_incr(it);
@@ -1065,6 +1069,7 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
 
 item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
                     const uint32_t hv, LIBEVENT_THREAD *t) {
+    //printf("[yedam] items.c :: do_item_touch()\n");
     item *it = do_item_get(key, nkey, hv, t, DO_UPDATE);
     if (it != NULL) {
         it->exptime = exptime;

@@ -193,6 +193,7 @@ unsigned int slabs_fixup(char *chunk, const int border) {
  * accordingly.
  */
 void slabs_init(const size_t limit, const double factor, const bool prealloc, const uint32_t *slab_sizes, void *mem_base_external, bool reuse_mem) {
+    printf("[yedam] slabs.c :: slabs_init()\n");
     int i = POWER_SMALLEST - 1;
     unsigned int size = sizeof(item) + settings.chunk_size;
 

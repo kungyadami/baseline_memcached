@@ -200,22 +200,22 @@ typedef void (*ADD_STAT)(const char *key, const uint16_t klen,
  * Possible states of a connection.
  */
 enum conn_states {
-    conn_listening,  /**< the socket which listens for connections */
-    conn_new_cmd,    /**< Prepare connection for next command */
-    conn_waiting,    /**< waiting for a readable socket */
-    conn_read,       /**< reading in a command line */
-    conn_parse_cmd,  /**< try to parse a command from the input buffer */
-    conn_write,      /**< writing out a simple response */
-    conn_nread,      /**< reading in a fixed number of bytes */
-    conn_swallow,    /**< swallowing unnecessary bytes w/o storing */
-    conn_closing,    /**< closing this connection */
-    conn_mwrite,     /**< writing out many items sequentially */
-    conn_closed,     /**< connection is closed */
-    conn_watch,      /**< held by the logger thread as a watcher */
-    conn_io_queue,   /**< wait on async. process to get response object */
-    conn_io_resume,  /**< ready to resume mwrite after async work */
-    conn_io_pending, /**< got woken up while waiting for async work */
-    conn_max_state   /**< Max state value (used for assertion) */
+    conn_listening,  /**< the socket which listens for connections, 연결을 listen하는 소켓 */
+    conn_new_cmd,    /**< Prepare connection for next command, 다음 명령을 위해 연결 준비 */
+    conn_waiting,    /**< waiting for a readable socket, 읽을 수 있는 소켓을 기다림 */
+    conn_read,       /**< reading in a command line, 명령 라인을 읽기 */ 
+    conn_parse_cmd,  /**< try to parse a command from the input buffer, 입력 버퍼로부터 명령을 파싱 시도 */
+    conn_write,      /**< writing out a simple response, 간단한 응답을 전송 */
+    conn_nread,      /**< reading in a fixed number of bytes, 고정된 수만큼의 바이트를 읽기 */
+    conn_swallow,    /**< swallowing unnecessary bytes w/o storing, 필요 없는 바이트를 저장하지 않고 건너뛰기 */
+    conn_closing,    /**< closing this connection, 연결 끊는중 */
+    conn_mwrite,     /**< writing out many items sequentially, 많은 아이템을 순차적으로 전송 */
+    conn_closed,     /**< connection is closed, 연결이 종료됨 */
+    conn_watch,      /**< held by the logger thread as a watcher, logger thread가 watcher가 된 상태 */
+    conn_io_queue,   /**< wait on async. process to get response object, 비동기적으로 대기, 응답 객체를 얻기 위함 */
+    conn_io_resume,  /**< ready to resume mwrite after async work, 비동기적 연산 이후 mwrite를 다시 시작할 준비 */
+    conn_io_pending, /**< got woken up while waiting for async work, 비동기 작업 대기중 깨워진 경우 */
+    conn_max_state   /**< Max state value (used for assertion), state값의 최댓값(assertion용임.) */
 };
 
 enum bin_substates {

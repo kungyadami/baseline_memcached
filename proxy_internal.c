@@ -372,6 +372,7 @@ static void process_update_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *re
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (comm == NREAD_SET) {
+            printf("[yedam] proxy_internal.c :: process_update_cmd()\n");
             it = item_get(key, nkey, t, DONT_UPDATE);
             if (it) {
                 item_unlink(it);
@@ -399,6 +400,7 @@ static void process_update_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *re
     int ret = store_item(it, comm, t, NULL, NULL, (settings.use_cas) ? get_cas_id() : 0, CAS_NO_STALE);
     switch (ret) {
     case STORED:
+      //printf("[yedam] proxy_internal.c :: process_update_cmd() - case STORED\n");
       pout_string(resp, "STORED");
       break;
     case EXISTS:
@@ -784,8 +786,10 @@ static void process_mget_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *resp
 
     bool overflow = false;
     if (!of.locked) {
+        printf("[yedam] proxy_internal.c :: process_mget_cmd()1\n");
         it = limited_get(key, nkey, t, 0, false, !of.no_update, &overflow);
     } else {
+        printf("[yedam] proxy_internal.c :: process_mget_cmd()2\n");
         // If we had to lock the item, we're doing our own bump later.
         it = limited_get_locked(key, nkey, t, DONT_UPDATE, &hv, &overflow);
     }
@@ -811,6 +815,7 @@ static void process_mget_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *resp
             // I look forward to the day I get rid of this :)
             memcpy(ITEM_data(it), "\r\n", 2);
             // NOTE: This initializes the CAS value.
+            printf("[yedam] proxy_internal.c :: process_mget_cmd()\n");
             do_item_link(it, hv, of.has_cas_in ? of.cas_id_in : get_cas_id());
             item_created = true;
         }
@@ -1333,6 +1338,7 @@ static void process_mdelete_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *r
             item *new_it = item_alloc(key, nkey, of.client_flags, of.exptime, 2);
             if (new_it != NULL) {
                 memcpy(ITEM_data(new_it), "\r\n", 2);
+                //printf("[yedam] - proxy.internal.c :: process_mdelete_cmd(), do_store_item call\n");
                 if (do_store_item(new_it, NREAD_SET, t, hv, NULL, NULL,
                             of.has_cas_in ? of.cas_id_in : ITEM_get_cas(it), CAS_NO_STALE)) {
                     do_item_remove(it);
@@ -1506,6 +1512,7 @@ static void process_marithmetic_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_res
             if (it != NULL) {
                 memcpy(ITEM_data(it), tmpbuf, vlen);
                 memcpy(ITEM_data(it) + vlen, "\r\n", 2);
+                //printf("[yedam] proxy.internal.c :: process_marithmetic_cmd(), do_store_item call\n");
                 if (do_store_item(it, NREAD_ADD, t, hv, NULL, &cas,
                             of.has_cas_in ? of.cas_id_in : get_cas_id(), CAS_NO_STALE)) {
                     item_created = true;

@@ -772,6 +772,7 @@ select:
 void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
                        int read_buffer_size, enum network_transport transport, void *ssl,
                        uint64_t conntag, enum protocol bproto) {
+    printf("[yedam] thread.c :: dispatch_conn_new()\n");
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
 
@@ -850,8 +851,10 @@ void return_io_pending(io_pending_t *io) {
 
 /* This misses the allow_new_conns flag :( */
 void sidethread_conn_close(conn *c) {
-    if (settings.verbose > 1)
+    if (settings.verbose > 1){
+        //printf("[yedam] thread.c :: sidethread_conn_close()-[1]\n");
         fprintf(stderr, "<%d connection closing from side thread.\n", c->sfd);
+    }
 
     c->state = conn_closing;
     // redispatch will see closing flag and properly close connection.
@@ -880,6 +883,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     uint32_t hv;
     hv = hash(key, nkey);
     item_lock(hv);
+    printf("[yedam] thread.c :: item_get()\n");
     it = do_item_get(key, nkey, hv, t, do_update);
     item_unlock(hv);
     return it;
@@ -892,6 +896,7 @@ item *item_get_locked(const char *key, const size_t nkey, LIBEVENT_THREAD *t, co
     item *it;
     *hv = hash(key, nkey);
     item_lock(*hv);
+    //printf("[yedam] thread.c :: item_get_locked()\n");
     it = do_item_get(key, nkey, *hv, t, do_update);
     return it;
 }
@@ -965,6 +970,7 @@ enum store_item_type store_item(item *item, int comm, LIBEVENT_THREAD *t, int *n
 
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
+    //printf("[yedam] - thread.c :: store_item(), do_store_item call\n");
     ret = do_store_item(item, comm, t, hv, nbytes, cas, cas_in, cas_stale);
     item_unlock(hv);
     return ret;

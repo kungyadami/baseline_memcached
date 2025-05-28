@@ -59,6 +59,7 @@ int try_read_command_binary(conn *c) {
         if (settings.verbose > 1) {
             /* Dump the packet before we convert it to host order */
             int ii;
+            //printf("[yedam] proto_bin.c :: try_read_command_binary()-[1]\n");
             fprintf(stderr, "<%d Read binary protocol data:", c->sfd);
             for (ii = 0; ii < sizeof(req->bytes); ++ii) {
                 if (ii % 4 == 0) {
@@ -324,7 +325,7 @@ static void complete_incr_bin(conn *c, char *extbuf) {
                 memcpy(ITEM_data(it), tmpbuf, res);
                 memcpy(ITEM_data(it) + res, "\r\n", 2);
                 c->thread->cur_sfd = c->sfd; // for store_item logging.
-
+                //printf("[yedam] - proto_bin.c :: complete_incr_bin(), store_item call\n");
                 if (store_item(it, NREAD_ADD, c->thread, NULL, &cas, (settings.use_cas) ? get_cas_id() : 0, CAS_NO_STALE)) {
                     c->cas = cas;
                     write_bin_response(c, &rsp->message.body, 0, 0, sizeof(rsp->message.body.value));
@@ -383,6 +384,7 @@ static void complete_update_bin(conn *c) {
 
     uint64_t cas = 0;
     c->thread->cur_sfd = c->sfd; // for store_item logging.
+    //printf("[yedam] - proto_bin.c :: complete_update_bin(), store_item call\n");
     ret = store_item(it, c->cmd, c->thread, NULL, &cas, (settings.use_cas) ? get_cas_id() : 0, CAS_NO_STALE);
     c->cas = cas;
 
@@ -468,6 +470,7 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
     bool failed = false;
 
     if (settings.verbose > 1) {
+        //printf("[yedam] proto_bin.c :: process_bin_get_or_touch()-[1]\n");
         fprintf(stderr, "<%d %s ", c->sfd, should_touch ? "TOUCH" : "GET");
         if (fwrite(key, 1, nkey, stderr)) {}
         fputc('\n', stderr);
@@ -479,6 +482,7 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
 
         it = item_touch(key, nkey, realtime(exptime), c->thread);
     } else {
+        printf("[yedam] proto_bin.c :: process_bin_get_or_touch()\n");
         it = item_get(key, nkey, c->thread, DO_UPDATE);
     }
 
@@ -609,6 +613,7 @@ static void process_bin_stat(conn *c) {
 
     if (settings.verbose > 1) {
         int ii;
+        //printf("[yedam] proto_bin.c :: process_bin_stat()-[1]\n");
         fprintf(stderr, "<%d STATS ", c->sfd);
         for (ii = 0; ii < nkey; ++ii) {
             fprintf(stderr, "%c", subcommand[ii]);
@@ -1097,6 +1102,7 @@ static void process_bin_update(conn *c, char *extbuf) {
 
     if (settings.verbose > 1) {
         int ii;
+        //printf("[yedam] proto_bin.c :: process_bin_update()-[1]\n");
         if (c->cmd == PROTOCOL_BINARY_CMD_ADD) {
             fprintf(stderr, "<%d ADD ", c->sfd);
         } else if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
@@ -1138,6 +1144,7 @@ static void process_bin_update(conn *c, char *extbuf) {
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
+            printf("[yedam] proto_bin.c :: process_bin_update()\n");
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
                 item_unlink(it);
