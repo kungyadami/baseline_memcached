@@ -2555,10 +2555,10 @@ static enum try_read_result try_read_network(conn *c) {
         printf("c->rsize : %d\n", c->rsize);
         printf("c->rbytes : %d\n", c->rbytes);
         printf("[yedam] memcached.c :: try_read_network() calling read()\n");
-        for(int i=0; i< avail; i++){
-            printf("%c", c->rbuf[i]);
-        }
-        printf("\n 끝\n");
+        // for(int i=0; i< avail; i++){
+        //     printf("%c", c->rbuf[i]);
+        // }
+        // printf("\n 끝\n");
         res = c->read(c, c->rbuf + c->rbytes, avail);
         if (res > 0) {
             pthread_mutex_lock(&c->thread->stats.mutex);
