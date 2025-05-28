@@ -482,7 +482,9 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
 
         it = item_touch(key, nkey, realtime(exptime), c->thread);
     } else {
-        printf("[yedam] proto_bin.c :: process_bin_get_or_touch()\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_bin.c :: process_bin_get_or_touch()\n");
+        }
         it = item_get(key, nkey, c->thread, DO_UPDATE);
     }
 
@@ -1144,7 +1146,9 @@ static void process_bin_update(conn *c, char *extbuf) {
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
-            printf("[yedam] proto_bin.c :: process_bin_update()\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_bin.c :: process_bin_update()\n");
+            }
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
                 item_unlink(it);

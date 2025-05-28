@@ -56,7 +56,9 @@ void assoc_init(const int hashtable_init) {
     //[yedam] 초기값
     // hashtable_init : 0
     // hashpower : 16
-    printf("[yedam] assoc.c :: assoc_init()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_init()\n");
+    }
     if (hashtable_init) { // [yedam] hash table이 0이라서 들어가지 않는다
         hashpower = hashtable_init;
     }
@@ -82,26 +84,36 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //key : 넣은 key 값 ( ex : key_0, key_1, ..)
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : ?
-    printf("[yedam] assoc.c :: assoc_find() - key : %s, nkey : %ld, hv : %d\n", key, nkey, hv);
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_find() - key : %s, nkey : %ld, hv : %d\n", key, nkey, hv);
+    }
     item *it;
     uint64_t oldbucket;
 
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
-        printf("[yedam] assoc.c :: assoc_find(), expanding\n");
+        if (settings.verbose) {
+            printf("[yedam] assoc.c :: assoc_find(), expanding\n");
+        }
         it = old_hashtable[oldbucket];
     } else {
-        printf("[yedam] assoc.c :: assoc_find(), not expanding\n");
+        if (settings.verbose) {
+            printf("[yedam] assoc.c :: assoc_find(), not expanding\n");
+        }
         it = primary_hashtable[hv & hashmask(hashpower)];
     }
 
     item *ret = NULL;
 #ifdef ENABLE_DTRACE
-    printf("[yedam] assoc.c :: assoc_find(), enable dtrace flag is true\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_find(), enable dtrace flag is true\n");
+    }
     int depth = 0;
 #endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
-            printf("[yedam] assoc.c :: assoc_find(), key found successfully\n");
+            if (settings.verbose) {
+                printf("[yedam] assoc.c :: assoc_find(), key found successfully\n");
+            }
             ret = it;
             break;
         }
@@ -120,7 +132,9 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
    the item wasn't found */
 
 static item** _hashitem_before (const char *key, const size_t nkey, const uint32_t hv) {
-    printf("[yedam] assoc.c :: _hashitem_before()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: _hashitem_before()\n");
+    }
     item **pos;
     uint64_t oldbucket;
 
@@ -140,7 +154,9 @@ static item** _hashitem_before (const char *key, const size_t nkey, const uint32
 
 /* grows the hashtable to the next power of 2. */
 static void assoc_expand(void) {
-    printf("[yedam] assoc.c :: assoc_expand()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_expand()\n");
+    }
     old_hashtable = primary_hashtable;
 
     primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
@@ -173,7 +189,9 @@ void assoc_start_expand(uint64_t curr_items) {
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
 int assoc_insert(item *it, const uint32_t hv) {
-    printf("[yedam] assoc.c :: assoc_insert()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_insert()\n");
+    }
     uint64_t oldbucket;
 
 //    assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined */
@@ -191,7 +209,9 @@ int assoc_insert(item *it, const uint32_t hv) {
 }
 
 void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
-    printf("[yedam] assoc.c :: assoc_delete()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_delete()\n");
+    }
     item **before = _hashitem_before(key, nkey, hv);
 
     if (*before) {
@@ -217,7 +237,9 @@ static volatile int do_run_maintenance_thread = 1;
 int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
-    printf("[yedam] assoc.c :: assoc_maintenance_thread()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_maintenance_thread()\n");
+    }
     mutex_lock(&maintenance_lock);
     while (do_run_maintenance_thread) {
         int ii = 0;
@@ -288,7 +310,9 @@ static void *assoc_maintenance_thread(void *arg) {
 static pthread_t maintenance_tid;
 
 int start_assoc_maintenance_thread(void) {
-    printf("[yedam] assoc.c :: start_assoc_maintenance_thread()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: start_assoc_maintenance_thread()\n");
+    }
     int ret;
     char *env = getenv("MEMCACHED_HASH_BULK_MOVE");
     if (env != NULL) {
@@ -308,7 +332,9 @@ int start_assoc_maintenance_thread(void) {
 }
 
 void stop_assoc_maintenance_thread(void) {
-    printf("[yedam] assoc.c :: stop_assoc_maintenance_thread()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: stop_assoc_maintenance_thread()\n");
+    }
     mutex_lock(&maintenance_lock);
     do_run_maintenance_thread = 0;
     pthread_cond_signal(&maintenance_cond);
@@ -326,7 +352,9 @@ struct assoc_iterator {
 };
 
 void *assoc_get_iterator(void) {
-    printf("[yedam] assoc.c :: assoc_get_iterator()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_get_iterator()\n");
+    }  
     struct assoc_iterator *iter = calloc(1, sizeof(struct assoc_iterator));
     if (iter == NULL) {
         return NULL;
@@ -341,7 +369,9 @@ void *assoc_get_iterator(void) {
 }
 
 bool assoc_iterate(void *iterp, item **it) {
-    printf("[yedam] assoc.c :: assoc_iterate()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_iterate()\n");
+    }
     struct assoc_iterator *iter = (struct assoc_iterator *) iterp;
     *it = NULL;
     // - if locked bucket and next, update next and return
@@ -386,7 +416,9 @@ bool assoc_iterate(void *iterp, item **it) {
 }
 
 void assoc_iterate_final(void *iterp) {
-    printf("[yedam] assoc.c :: assoc_iterate_final()\n");
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_iterate_final()\n");
+    }
     struct assoc_iterator *iter = (struct assoc_iterator *) iterp;
     if (iter->bucket_locked) {
         item_unlock(iter->bucket);

@@ -772,7 +772,9 @@ select:
 void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
                        int read_buffer_size, enum network_transport transport, void *ssl,
                        uint64_t conntag, enum protocol bproto) {
-    printf("[yedam] thread.c :: dispatch_conn_new()\n");
+    if (settings.verbose) {
+        printf("[yedam] thread.c :: dispatch_conn_new()\n");
+    }
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
 
@@ -883,7 +885,9 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     uint32_t hv;
     hv = hash(key, nkey);
     item_lock(hv);
-    printf("[yedam] thread.c :: item_get()\n");
+    if (settings.verbose) {
+        printf("[yedam] thread.c :: item_get()\n");
+    }
     it = do_item_get(key, nkey, hv, t, do_update);
     item_unlock(hv);
     return it;

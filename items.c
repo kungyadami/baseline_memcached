@@ -384,7 +384,9 @@ void do_item_link_fixup(item *it) {
     item **head, **tail;
     int ntotal = ITEM_ntotal(it);
     uint32_t hv = hash(ITEM_key(it), it->nkey);
-    printf("[yedam] items.c :: do_item_link_fixup()\n");
+    if (settings.verbose) {
+        printf("[yedam] items.c :: do_item_link_fixup()\n");
+    }
     assoc_insert(it, hv);
 
     head = &heads[it->slabs_clsid];
@@ -498,7 +500,11 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, cas);
-    printf("[yedam] items.c :: do_item_link()\n");
+    if (settings.verbose) {
+        if (settings.verbose) {
+            printf("[yedam] items.c :: do_item_link()\n");
+        }
+    }
     assoc_insert(it, hv);
     item_link_q(it);
     refcount_incr(it);
@@ -975,7 +981,9 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
-    printf("[yedam] items.c :: do_item_get()\n");
+    if (settings.verbose) {
+        printf("[yedam] items.c :: do_item_get()\n");
+    }
     item *it = assoc_find(key, nkey, hv);
     if (it != NULL) {
         refcount_incr(it);

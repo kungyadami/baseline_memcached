@@ -1018,7 +1018,9 @@ static void proxy_process_command(conn *c, char *command, size_t cmdlen, bool mu
         }
         // lets nread_proxy know we're in ascii mode.
         c->proxy_rctx = NULL;
-        printf("[yedam] proto_proxy.c :: proxy_process_command()\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_proxy.c :: proxy_process_command()\n");
+        }
         process_command_ascii(c, command);
         return;
     }

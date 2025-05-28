@@ -221,19 +221,27 @@ void complete_nread_ascii(conn *c) {
       } else {
           switch (ret) {
           case STORED:
+            if (settings.verbose) {
               printf("[yedam] - proto_text.c :: complete_nread_ascii(), STORED\n");
+            }
               out_string(c, "STORED"); //여기서 최종 STORED를 내뱉는듯??
               break;
           case EXISTS:
+            if (settings.verbose) {
               printf("[yedam] - proto_text.c :: complete_nread_ascii(), EXISTS\n");
+            }
               out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
+            if (settings.verbose) {
               printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_FOUND\n");
+            }
               out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
+            if (settings.verbose) {
               printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_STORED\n");
+            }
               out_string(c, "NOT_STORED");
               break;
           default:
@@ -436,7 +444,9 @@ int try_read_command_asciiauth(conn *c) {
     if (authfile_check(tokens[0].value, tokens[1].value) == 1) {
         out_string(c, "STORED");
         c->authenticated = true;
-        printf("[yedam] proto_text.c :: try_read_command_asciiauth()1\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: try_read_command_asciiauth()1\n");
+        }
         c->try_read_command = try_read_command_ascii;
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.auth_cmds++;
@@ -453,7 +463,9 @@ int try_read_command_asciiauth(conn *c) {
 }
 
 int try_read_command_ascii(conn *c) {
-    printf("[yedam] proto_text.c :: try_read_command_ascii()\n");
+    if (settings.verbose) {
+        printf("[yedam] proto_text.c :: try_read_command_ascii()\n");
+    }
     char *el, *cont;
 
     if (c->rbytes == 0)
@@ -500,7 +512,9 @@ int try_read_command_ascii(conn *c) {
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time;
-    printf("[yedam] proto_text.c :: try_read_command_ascii()2\n");
+    if (settings.verbose) {
+        printf("[yedam] proto_text.c :: try_read_command_ascii()2\n");
+    }
     //여기서 process_command_ascii로 들어가고, 거기서 get command ... 등등
     process_command_ascii(c, c->rcurr);
 
@@ -589,7 +603,9 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 fail_length = true;
                 goto stop;
             }
-            printf("[yedam] proto_text.c :: process_get_command()\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_get_command()\n");
+            }
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
@@ -879,7 +895,9 @@ static void process_meta_command(conn *c, token_t *tokens, const size_t ntokens)
     }
 
     bool overflow; // not used here.
-    printf("[yedam] proto_text.c :: process_meta_command()\n");
+    if (settings.verbose) {
+        printf("[yedam] proto_text.c :: process_meta_command()\n");
+    }
     item *it = limited_get(key, nkey, c->thread, 0, false, DONT_UPDATE, &overflow);
     if (it) {
         mc_resp *resp = c->resp;
@@ -1143,10 +1161,14 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
     // I think we do, since an overflow shouldn't trigger an alloc/replace.
     bool overflow = false;
     if (!of.locked) {
-        printf("[yedam] proto_text.c :: process_mget_command()1\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: process_mget_command()1\n");
+        }
         it = limited_get(key, nkey, c->thread, 0, false, !of.no_update, &overflow);
     } else {
-        printf("[yedam] proto_text.c :: process_mget_command()2\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: process_mget_command()2\n");
+        }
         // If we had to lock the item, we're doing our own bump later.
         it = limited_get_locked(key, nkey, c->thread, DONT_UPDATE, &hv, &overflow);
     }
@@ -1172,7 +1194,9 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
             // I look forward to the day I get rid of this :)
             memcpy(ITEM_data(it), "\r\n", 2);
             // NOTE: This initializes the CAS value.
-            printf("[yedam] proto_text.c :: process_mget_command()\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_mget_command()\n");
+            }
             do_item_link(it, hv, of.has_cas_in ? of.cas_id_in : get_cas_id());
             item_created = true;
         }
@@ -2095,7 +2119,9 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (comm == NREAD_SET) {
-            printf("[yedam] proto_text.c :: process_update_command()\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_update_command()\n");
+            }
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
                 item_unlink(it);
@@ -2343,7 +2369,9 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
         item_unlock(hv);
     } else if (strcmp(tokens[1].value, "ref") == 0) {
         // intentionally leak a reference.
-        printf("[yedam] proto_text.c :: process_debugitem_command()\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: process_debugitem_command()\n");
+        }
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
             out_string(c, "MISS");
@@ -2352,7 +2380,9 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
     } else if (strcmp(tokens[1].value, "unref") == 0) {
         // double unlink. debugger must have already ref'ed it or this
         // underflows.
-        printf("[yedam] proto_text.c :: process_debugitem_command()2\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: process_debugitem_command()2\n");
+        }
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
             out_string(c, "MISS");
@@ -2906,7 +2936,9 @@ static void process_refresh_certs_command(conn *c, token_t *tokens, const size_t
 // Leaving this note here to spend more time on a fix when necessary, or if an
 // opportunity becomes obvious.
 void process_command_ascii(conn *c, char *command) {
-    printf("[yedam] proto_text.c :: process_command_ascii()\n");
+    if (settings.verbose) {
+        printf("[yedam] proto_text.c :: process_command_ascii()\n");
+    }
 
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
@@ -2973,16 +3005,24 @@ void process_command_ascii(conn *c, char *command) {
         WANT_TOKENS_MIN(ntokens, 3);
         if (strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) {
             //여기에 들어가서 process_get_command() 실행한다
-            printf("[yedam] proto_text.c :: process_get_command() - get\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_get_command() - get\n");
+            }
             process_get_command(c, tokens, ntokens, false, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0) {
-            printf("[yedam] proto_text.c :: process_get_command() - gets\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_get_command() - gets\n");
+            }
             process_get_command(c, tokens, ntokens, true, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gat") == 0) {
-            printf("[yedam] proto_text.c :: process_get_command() - gat\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_get_command() - gat\n");
+            }
             process_get_command(c, tokens, ntokens, false, true);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gats") == 0) {
-            printf("[yedam] proto_text.c :: process_get_command() - gats\n");
+            if (settings.verbose) {
+                printf("[yedam] proto_text.c :: process_get_command() - gats\n");
+            }
             process_get_command(c, tokens, ntokens, true, true);
         } else {
             out_string(c, "ERROR");
@@ -3075,7 +3115,9 @@ void process_command_ascii(conn *c, char *command) {
         // removed > 10 years ago, etc. Keeping for compatibility reasons but
         // we should look deeper into client code and remove this.
         WANT_TOKENS_MIN(ntokens, 3);
-        printf("[yedam] proto_text.c :: process_get_command() - bget\n");
+        if (settings.verbose) {
+            printf("[yedam] proto_text.c :: process_get_command() - bget\n");
+        }
         process_get_command(c, tokens, ntokens, false, false);
 
     } else if (strcmp(tokens[COMMAND_TOKEN].value, "flush_all") == 0) {
