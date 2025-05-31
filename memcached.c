@@ -48,7 +48,7 @@
 #include <stddef.h>
 
 #ifdef HAVE_GETOPT_LONG
-#include <getopt.h>
+#include <getopt.h> //프로그램 실행시 인자 처리 잘해주는 라이브러리
 #endif
 
 #include "tls.h"
@@ -60,6 +60,19 @@
 #if defined(__FreeBSD__)
 #include <sys/sysctl.h>
 #endif
+
+/*
+* yedam's mpi function
+*/
+
+#include <mpi.h>
+// void initialize_mpi(){
+//     MPI_Init(&argc, &argv); // 초기화
+//     MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
+//     MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
+//     MPI_Get_processor_name(processor_name, &name_len);
+// }
+
 
 /*
  * forward declarations
@@ -128,9 +141,6 @@ enum transmit_result {
 
 /* Default methods to read from/ write to a socket */
 ssize_t tcp_read(conn *c, void *buf, size_t count) {
-    if (settings.verbose) {
-        printf("[yedam] - memcached.c :: tcp_read()\n");
-    }
     assert (c != NULL);
     return read(c->sfd, buf, count);
 }
@@ -2609,7 +2619,24 @@ static enum try_read_result try_read_network(conn *c) {
             // }
             // printf("\n 끝\n");
         }
+        printf("c->read called\n");
         res = c->read(c, c->rbuf + c->rbytes, avail);
+
+        //yedam code start
+        //수신 버퍼
+        int size;
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
+        printf("[memcached] 통신그룹 내 rank 개수 : %d | my rank : %d\n", size, rank);
+        char mpi_recv_buf[100];
+        MPI_Status mpi_recv_status;
+        printf("[memcached] MPI_Recv 시작\n");
+        MPI_Recv(mpi_recv_buf, 100, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status); //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
+                                                                    // 일단 이렇게 구현해보자
+        printf("[memcached] recv buf : %s | 송신 rank : %d\n", mpi_recv_buf, mpi_recv_status.MPI_SOURCE);
+        //yedam code end
+
         if (res > 0) {
             pthread_mutex_lock(&c->thread->stats.mutex);
             c->thread->stats.bytes_read += res;
@@ -4986,6 +5013,18 @@ int main (int argc, char **argv) {
     meta->slab_config = NULL;
     char *subopts, *subopts_orig;
     char *subopts_value;
+
+    //yedam
+    int rank;
+    int size;
+    char processor_name[MPI_MAX_PROCESSOR_NAME];
+    int name_len;
+
+    MPI_Init(&argc, &argv); // 초기화
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
+    MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
+    MPI_Get_processor_name(processor_name, &name_len);
+
     enum {
         MAXCONNS_FAST = 0,
         HASHPOWER_INIT,
@@ -5182,7 +5221,7 @@ int main (int argc, char **argv) {
           ;
 
     /* process arguments */
-#ifdef HAVE_GETOPT_LONG
+#ifdef HAVE_GETOPT_LONG //여기로 들어감
     const struct option longopts[] = {
         {"unix-mask", required_argument, 0, 'a'},
         {"enable-shutdown", no_argument, 0, 'A'},
@@ -5223,19 +5262,23 @@ int main (int argc, char **argv) {
         {0, 0, 0, 0}
     };
     int optindex;
-    while (-1 != (c = getopt_long(argc, argv, shortopts,
-                    longopts, &optindex))) {
+    while (-1 != (c = getopt_long(argc, argv, shortopts, longopts, &optindex))) {
+        printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG, argv : %s\n", *argv);
 #else
     while (-1 != (c = getopt(argc, argv, shortopts))) {
 #endif
         if (optarg) {
+            printf("[yedam] memcached.c :: int main - optarg : %s\n", optarg);
+            printf("[yedam] memcached.c :: int main - optarg[0] : %c\n", optarg[0]);
             while(isspace(optarg[0])) {
                 optarg++;
             }
         }
-        //printf("[yedam] memcached.c :: main()-[3]\n");
         switch (c) {
-            ////printf("[yedam] memcached.c :: main()-[3]-1. switch(c) : %d\n", c);
+        //yedam
+        case 'np':
+            int ranks = atoi(optarg);
+            printf("[yedam] memcached.c :: int main - np parameter is %d\n", ranks);
         case 'A':
             /* enables "shutdown" command */
             settings.shutdown_command = true;
@@ -5263,6 +5306,7 @@ int main (int argc, char **argv) {
             udp_specified = true;
             break;
         case 'p':
+            printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG case 'p'\n");
             settings.port = atoi(optarg);
             tcp_specified = true;
             break;
@@ -5275,6 +5319,7 @@ int main (int argc, char **argv) {
 #endif /* #ifndef DISABLE_UNIX_SOCKET */
             break;
         case 'm':
+            printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG case 'm'\n");
             settings.maxbytes = ((size_t)atoi(optarg)) * 1024 * 1024;
             break;
         case 'M':
@@ -5300,10 +5345,12 @@ int main (int argc, char **argv) {
             lock_memory = true;
             break;
         case 'v':
+            printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG case 'v'\n");
             settings.verbose++;
             break;
         case 'l':
-            if (settings.inter != NULL) {
+            printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG case 'l'\n");
+            if (settings.inter != NULL) { //여기 안들어감
                 if (strstr(settings.inter, optarg) != NULL) {
                     break;
                 }
@@ -5316,8 +5363,9 @@ int main (int argc, char **argv) {
                 snprintf(p, len, "%s,%s", settings.inter, optarg);
                 free(settings.inter);
                 settings.inter = p;
-            } else {
-                settings.inter= strdup(optarg);
+            } else { //여기 들어감
+                printf("[yedam] memcached.c :: int main - HAVE_GETOPT_LONG case 'l' 3\n");
+                settings.inter= strdup(optarg); //여기에 있는 settings.inter가 ip주소가 됨
             }
             break;
         case 'd':
@@ -6235,9 +6283,10 @@ int main (int argc, char **argv) {
         reuse_mem = false;
     }
 #endif
-    //printf("[yedam] memcached.c :: main()-[14]-1, slabs_init() call\n");
+    printf("[yedam] memcached.c :: main()-[14]-1, slabs_init() call\n");
     slabs_init(settings.maxbytes, settings.factor, preallocate,
             use_slab_sizes ? slab_sizes : NULL, mem_base, reuse_mem);
+    printf("[yedam] memcached.c :: main()-[14]-1, slabs_init() call end\n");
 #ifdef EXTSTORE
     if (storage_enabled) {
         storage = storage_init(storage_cf);
@@ -6249,7 +6298,7 @@ int main (int argc, char **argv) {
         prefill = true;
     }
 #endif
-
+    printf("[yedam] memcached.c :: main()-[14]-2\n");
     if (settings.drop_privileges) {
         setup_privilege_violations_handler();
     }
@@ -6273,6 +6322,7 @@ int main (int argc, char **argv) {
      * ignore SIGPIPE signals; we can use errno == EPIPE if we
      * need that information
      */
+      printf("[yedam] memcached.c :: main()-[14]-3\n");
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         perror("failed to ignore SIGPIPE; sigaction");
         exit(EX_OSERR);
@@ -6298,7 +6348,7 @@ int main (int argc, char **argv) {
         }
     }
 #endif
-
+     printf("[yedam] memcached.c :: main()-[14]-4\n");
     if (start_assoc_maint && start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
     }
@@ -6324,7 +6374,7 @@ int main (int argc, char **argv) {
         free(meta);
         return 1;
     }
-
+     printf("[yedam] memcached.c :: main()-[14]-5\n");
     if (settings.slab_reassign) {
         settings.slab_rebal = start_slab_maintenance_thread(storage);
         if (!settings.slab_rebal) {
@@ -6335,7 +6385,7 @@ int main (int argc, char **argv) {
     if (settings.idle_timeout && start_conn_timeout_thread() == -1) {
         exit(EXIT_FAILURE);
     }
-
+     printf("[yedam] memcached.c :: main()-[14]-6\n");
     /* initialise clock event */
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     {
@@ -6367,7 +6417,7 @@ int main (int argc, char **argv) {
             exit(EX_OSERR);
         }
     }
-
+     printf("[yedam] memcached.c :: main()-[14]-6\n");
     /* create the listening socket, bind it, and init */
     if (settings.socketpath == NULL) {
         //printf("[yedam] memcached.c :: main()-[18], settings.socketpath is NULL\n");
@@ -6445,7 +6495,7 @@ int main (int argc, char **argv) {
         if (temp_portnumber_filename)
             free(temp_portnumber_filename);
     }
-
+     printf("[yedam] memcached.c :: main()-[14]-7\n");
     /* Give the sockets a moment to open. I know this is dumb, but the error
      * is only an advisory.
      */
@@ -6457,24 +6507,26 @@ int main (int argc, char **argv) {
 
     if (pid_file != NULL) {
         save_pid(pid_file);
-    }
-
+    }  
+     printf("[yedam] memcached.c :: main()-[14]-8\n");
     /* Drop privileges no longer needed */
     if (settings.drop_privileges) {
         drop_privileges();
     }
-
+         printf("[yedam] memcached.c :: main()-[14]-9\n");
     /* Initialize the uriencode lookup table. */
     uriencode_init();
-
+     printf("[yedam] memcached.c :: main()-[14]-10\n");
     /* enter the event loop */
-    while (!stop_main_loop) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    while (!stop_main_loop) { //여기를 계속 들어가네 ..
+        printf("[yedam] memcached.c :: main()-[14]-10?\n");
         if (event_base_loop(main_base, EVLOOP_ONCE) != 0) {
             retval = EXIT_FAILURE;
             break;
         }
     }
-
+     printf("[yedam] memcached.c :: main()-[14]-11\n");
     switch (stop_main_loop) {
         case GRACE_STOP:
             fprintf(stderr, "Gracefully stopping\n");
@@ -6492,7 +6544,7 @@ int main (int argc, char **argv) {
             fprintf(stderr, "Exiting on error\n");
         break;
     }
-
+    printf("[yedam] memcached.c :: main()-[14]-12\n");
     if (stop_main_loop == GRACE_STOP) {
         stop_threads();
         if (settings.memory_file != NULL) {
