@@ -142,6 +142,7 @@ enum transmit_result {
 /* Default methods to read from/ write to a socket */
 ssize_t tcp_read(conn *c, void *buf, size_t count) {
     assert (c != NULL);
+    printf("[yedam] memcached.c :: tcp_read()\n");
     return read(c->sfd, buf, count);
 }
 
@@ -151,25 +152,16 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
     if (settings.verbose) {
         printf("[yedam] - memcached.c :: tcp_sendmsg()\n");
     }
-    ////1. msg_name : 주소 정보들
 
-    // if(msg->msg_name && msg->msg_namelen > 0){ //ip출력하기 위함
-    //     struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;
-    //     char ip[INET_ADDRSTRLEN];
-    //     inet_ntop(AF_INET, &(addr->sin_addr), ip, INET_ADDRSTRLEN);
-    //     printf("msg_name (IP addr) : %s, (port) : %d\n", ip, ntohs(addr->sin_port));
-    // }else{
-    //     printf("msg_name: NULL\n");
-    // }
+    char mpi_send_buf[1024];
+    ssize_t offset=0;
 
-    // printf("msg_namelen: %d\n", msg->msg_namelen);
-
-    // // 2. msg_iov: 데이터 버퍼
+    // // // 2. msg_iov: 데이터 버퍼
     // printf("msg_iovlen: %d\n", msg->msg_iovlen);
     // for (int i = 0; i < msg->msg_iovlen; i++) {
     //     struct iovec *iov = &msg->msg_iov[i];
-    //     printf("msg_iov[%d]: %.*s (length: %zu)\n",
-    //            i, (int)iov->iov_len, (char *)iov->iov_base, iov->iov_len);
+    //     printf("msg_iov[%d]: %.*s (length: %zu)\n", i, (int)iov->iov_len, (char *)iov->iov_base, iov->iov_len);
+    //     snprintf()
     // }
 
     // // 3. msg_control: 제어 메시지 (예: 파일 디스크립터 전달)
@@ -180,9 +172,32 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
     //     printf("msg_control: NULL or empty\n");
     // }
 
-    // printf("msg_flags: %d\n", msg->msg_flags);
+    //printf("msg_flags: %d\n", msg->msg_flags);
+
+    for (int i = 0; i < msg->msg_iovlen; i++) {
+        struct iovec *iov = &msg->msg_iov[i];
+        memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
+        offset +=iov->iov_len;
+    }
+    printf("[yedam] - memcached.c :: tcp_sendmsg() msg_buf : %s\n", mpi_send_buf);
+
     assert (c != NULL);
-    return sendmsg(c->sfd, msg, flags);
+
+    ssize_t sent = sendmsg(c->sfd, msg, flags);
+    if (sent == -1) {
+        perror("sendmsg failed");
+    } else {
+        printf("총 %zd 바이트 전송됨\n", sent);
+    }
+
+    struct iovec *iov = &msg->msg_iov[0];
+    //char* msg_content = (char *)iov->iov_base;
+    printf("[yedam] - memcached.c :: tcp_sendmsg() MPI_Send 전송\n");
+    MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
+    printf("[yedam] - memcached.c :: tcp_sendmsg() MPI_Send 전송 완\n");
+
+
+    return sent;
 }
 
 ssize_t tcp_write(conn *c, void *buf, size_t count) {
@@ -2571,7 +2586,7 @@ static enum try_read_result try_read_udp(conn *c) {
  */
 static enum try_read_result try_read_network(conn *c) {
     if (settings.verbose) {
-        printf("[yedam] memcached.c :: try_read_network\n");
+        printf("[yedam] memcached.c :: try_read_network()\n");
     }
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
@@ -2610,16 +2625,11 @@ static enum try_read_result try_read_network(conn *c) {
 
         int avail = c->rsize - c->rbytes;
         if (settings.verbose) {
-            printf("avail : %d\n", avail);
-            printf("c->rsize : %d\n", c->rsize);
-            printf("c->rbytes : %d\n", c->rbytes);
-            printf("[yedam] memcached.c :: try_read_network() calling read()\n");
-            // for(int i=0; i< avail; i++){
-            //     printf("%c", c->rbuf[i]);
-            // }
-            // printf("\n 끝\n");
+            printf("[yedam] memcached.c :: try_read_network() avail : %d\n", avail);
+            printf("[yedam] memcached.c :: try_read_network() c->rsize : %d\n", c->rsize);
+            printf("[yedam] memcached.c :: try_read_network() c->rbytes : %d\n", c->rbytes);
+            printf("[yedam] memcached.c :: try_read_network() called read() function\n");
         }
-        printf("c->read called\n");
         res = c->read(c, c->rbuf + c->rbytes, avail);
 
         //yedam code start
@@ -2631,9 +2641,10 @@ static enum try_read_result try_read_network(conn *c) {
         printf("[memcached] 통신그룹 내 rank 개수 : %d | my rank : %d\n", size, rank);
         char mpi_recv_buf[100];
         MPI_Status mpi_recv_status;
-        printf("[memcached] MPI_Recv 시작\n");
-        MPI_Recv(mpi_recv_buf, 100, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status); //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
-                                                                    // 일단 이렇게 구현해보자
+        printf("[memcached] MPI_Recv() start\n");
+        MPI_Recv(mpi_recv_buf, 100, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
+        // 일단 이렇게 구현해보자
         printf("[memcached] recv buf : %s | 송신 rank : %d\n", mpi_recv_buf, mpi_recv_status.MPI_SOURCE);
         //yedam code end
 
@@ -2660,9 +2671,6 @@ static enum try_read_result try_read_network(conn *c) {
             }
             return READ_ERROR;
         }
-    }
-    if (settings.verbose) {
-        printf("[yedam] memcached.c :: try_read_network() out\n");
     }
     return gotdata;
 }
@@ -3158,7 +3166,7 @@ static void drive_machine(conn *c) {
     assert(c != NULL);
 
     while (!stop) {
-        //printf("[yedam] memcached.c :: drive_machine()[2]\n");
+        printf("[yedam] memcached.c :: drive_machine()[2]\n");
         switch(c->state) {
         case conn_listening:
             if (settings.verbose) {
@@ -4540,14 +4548,17 @@ static void remove_pidfile(const char *pid_file) {
 }
 
 static void sig_handler(const int sig) {
+    printf("[yedam] memcached.c :: sig_handler\n");
     stop_main_loop = EXIT_NORMALLY;
 }
 
 static void sighup_handler(const int sig) {
+    printf("[yedam] memcached.c :: sighup_handler\n");
     settings.sig_hup = true;
 }
 
 static void sig_usrhandler(const int sig) {
+    printf("[yedam] memcached.c :: sig_usrhandler\n");
     stop_main_loop = GRACE_STOP;
 }
 
@@ -6520,13 +6531,14 @@ int main (int argc, char **argv) {
     /* enter the event loop */
     MPI_Barrier(MPI_COMM_WORLD);
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
-        printf("[yedam] memcached.c :: main()-[14]-10?\n");
+        printf("[yedam] memcached.c :: main() main loop\n");
         if (event_base_loop(main_base, EVLOOP_ONCE) != 0) {
             retval = EXIT_FAILURE;
             break;
         }
     }
-     printf("[yedam] memcached.c :: main()-[14]-11\n");
+
+    printf("[yedam] memcached.c :: main()-[14]-11\n");
     switch (stop_main_loop) {
         case GRACE_STOP:
             fprintf(stderr, "Gracefully stopping\n");
