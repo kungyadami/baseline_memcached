@@ -790,7 +790,9 @@ void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
         fprintf(stderr, "Failed to allocate memory for connection object\n");
         return;
     }
-
+    if (settings.verbose) {
+        printf("[yedam] thread.c :: dispatch_conn_new() 2\n");
+    }
     item->sfd = sfd;
     item->init_state = init_state;
     item->event_flags = event_flags;
@@ -801,8 +803,12 @@ void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
     item->conntag = conntag;
     item->bproto = bproto;
 
+
     MEMCACHED_CONN_DISPATCH(sfd, (int64_t)thread->thread_id);
     notify_worker(thread, item);
+    if (settings.verbose) {
+        printf("[yedam] thread.c :: dispatch_conn_new()3\n");
+    }
 }
 
 /*

@@ -56,14 +56,18 @@ void assoc_init(const int hashtable_init) {
     //[yedam] 초기값
     // hashtable_init : 0
     // hashpower : 16
-    if (settings.verbose) {
-        printf("[yedam] assoc.c :: assoc_init()\n");
-    }
+    printf("[yedam] assoc.c :: assoc_init()\n");
+    printf("\t settings.verbose : %d\n", settings.verbose);
+    // if (settings.verbose) {
+    //     printf("[yedam] assoc.c :: assoc_init()\n");
+    // }
     if (hashtable_init) { // [yedam] hash table이 0이라서 들어가지 않는다
         hashpower = hashtable_init;
     }
     primary_hashtable = calloc(hashsize(hashpower), sizeof(void *));
     //[yedam] 메인 해시 테이블을 할당하는 것 같다
+    // calloc은 1번째 인자 * 두번째 인자 만큼의 byte를 할당하고, 할당된 메모리를 모두 0으로 초기화해줌
+    // primary hashtable은 static item** 형
 
     if (! primary_hashtable) {
         fprintf(stderr, "Failed to init hashtable.\n");
@@ -238,6 +242,7 @@ int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
     if (settings.verbose) {
+        //여기서 스레드가 이 함수를 실행함
         printf("[yedam] assoc.c :: assoc_maintenance_thread()\n");
     }
     mutex_lock(&maintenance_lock);
@@ -246,6 +251,7 @@ static void *assoc_maintenance_thread(void *arg) {
 
         /* There is only one expansion thread, so no need to global lock. */
         for (ii = 0; ii < hash_bulk_move && expanding; ++ii) {
+            printf("\t assoc_maintenance_thread() - ii : %d\n", ii);
             item *it, *next;
             uint64_t bucket;
             void *item_lock = NULL;
@@ -326,6 +332,9 @@ int start_assoc_maintenance_thread(void) {
                               assoc_maintenance_thread, NULL)) != 0) {
         fprintf(stderr, "Can't create thread: %s\n", strerror(ret));
         return -1;
+    }
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: start_assoc_maintenance_thread()2\n");
     }
     thread_setname(maintenance_tid, "mc-assocmaint");
     return 0;

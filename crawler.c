@@ -662,15 +662,20 @@ int stop_item_crawler_thread(bool wait) {
 }
 
 /* Lock dance to "block" until thread is waiting on its condition:
- * caller locks mtx. caller spawns thread.
- * thread blocks on mutex.
- * caller waits on condition, releases lock.
- * thread gets lock, sends signal.
- * caller can't wait, as thread has lock.
- * thread waits on condition, releases lock
- * caller wakes on condition, gets lock.
- * caller immediately releases lock.
- * thread is now safely waiting on condition before the caller returns.
+ * caller locks mtx. caller spawns thread.     호출자는 mtx를 lock한다. 그 상황에서 스레드를 생성한다.(이 스레드도 mtx 사용)
+ * thread blocks on mutex.                     새로 만들어진 스레드는 block　처리 된다.(호출자가 이미 lock 처리를 해둬서)
+ * caller waits on condition, releases lock.   호출자는 pthread_cond_wait()을 호출한다. 그래서 조건변수(cond) 대기 진입과 동시에 mtx는 unlock된다.
+ * thread gets lock, sends signal.             새 스레드는 mtx를 lock처리를 할 수 있게 되고, signal을 보낸다(아마 pthread_cond_signal)
+ * caller can't wait, as thread has lock.      호출자는 thread가 아직 mtx를 가지고 있어서 lock을 얻지 못하고, wait 상태를 유지한다.
+ * thread waits on condition, releases lock    thread 본인이 pthread_cond_wait()에 들어가 조건변수 대기를 시작하고, 이때 mtx가 unlock된다.
+ * caller wakes on condition, gets lock.       호출자는 조건변수 대기를 하다가, lock을 얻는다.
+ * caller immediately releases lock.           호출자는 즉시 lock을 놓는다.
+ * thread is now safely waiting on condition before the caller returns. 스레드는 이제 호출자가 반환하기 전에 안전하게 조건변수 대기를 한다.
+
+lock dance 라고 하는 게 있는데 ;;; 
+
+
+
  */
 int start_item_crawler_thread(void) {
     int ret;
@@ -679,8 +684,7 @@ int start_item_crawler_thread(void) {
         return -1;
     pthread_mutex_lock(&lru_crawler_lock);
     do_run_lru_crawler_thread = 1;
-    if ((ret = pthread_create(&item_crawler_tid, NULL,
-        item_crawler_thread, NULL)) != 0) {
+    if ((ret = pthread_create(&item_crawler_tid, NULL, item_crawler_thread, NULL)) != 0) {
         fprintf(stderr, "Can't create LRU crawler thread: %s\n",
             strerror(ret));
         pthread_mutex_unlock(&lru_crawler_lock);
@@ -689,6 +693,9 @@ int start_item_crawler_thread(void) {
     thread_setname(item_crawler_tid, "mc-itemcrawler");
     /* Avoid returning until the crawler has actually started */
     pthread_cond_wait(&lru_crawler_cond, &lru_crawler_lock);
+    //조건 변수인 lru_crawler_cond가 signal/broadcast로 깨어날 때까지 스레드를 block
+    
+
     pthread_mutex_unlock(&lru_crawler_lock);
 
     return 0;
