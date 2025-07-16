@@ -147,6 +147,7 @@ mpi_conn_init(struct mpi_conn_info* mpi_conn_arr){
     mpi_conn_arr[1].state = conn_read;
     mpi_conn_arr[1].rsize = READ_BUFFER_SIZE; //16kb
     mpi_conn_arr[1].rbuf = (char *)malloc((size_t)mpi_conn_arr[1].rsize);
+    mpi_conn_arr[1].rcurr = mpi_conn_arr[1].rbuf;
 
 }
 
@@ -154,6 +155,14 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* client){
      printf("memcached/mpi_try_read_network\n");
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
+
+    if (client->rcurr != client->rbuf) {
+        if (client->rbytes > 0) /* otherwise there's nothing to copy */
+            memmove(client->rbuf, client->rcurr, client->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
+        client->rcurr = client->rbuf;
+    }
+
+
     while(1){
         int avail = client->rsize - client->rbytes;
         printf("avail : %d\n", avail);
@@ -188,6 +197,7 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
             res = mpi_try_read_network(client);
             switch(res){
             case READ_DATA_RECEIVED:
+                printf("memcached/memcached.c :: drive_machine - client state is changed conn_parse_cmd\n");
                 client->state = conn_parse_cmd;
                 break;
             }
@@ -197,7 +207,22 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
             break;
          
         case conn_parse_cmd:
+            printf("memcached/memcached.c :: drive_machine - conn_parse_cmd\n");
+            client->noreply = false;
+            if (mpi_try_read_command_ascii(client) == 0) {
+                /* we need more data! */
+                // if (client->resp_head) {
+                //     // Buffered responses waiting, flush in the meantime.
+                //     conn_set_state(c, conn_mwrite);
+                // } else {
+                //     conn_set_state(c, conn_waiting);
+                // }
+                printf("memcached/memcached.c :: drive_machine - conn_parse_cmd exit\n");
+                exit(0);
+            }
+            printf("에?\n");
             break;
+
         }
     }
 }

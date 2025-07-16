@@ -148,18 +148,31 @@ unsigned int do_get_lru_size(uint32_t id) {
  * nsuffix - The length of the suffix is stored here.
  *
  * Returns the total size of the header.
+
+    객체에 있는 헤더에서, 다양한 크기를 가진 부분을 생성
+    nKey : key의 길이
+    flags : 그냥 뭐 .. 플래그
+    nbytes : CRLF(\r\n)이 추가된, value를 가지고 있는 바이트 수(즉, value_0\r\n 임.)
+    suffix :  VALUE 로 시작하는 줄의 접미사(suffix)임. flags나 size라네..
+    nsuffix : suffix의 길이
  */
 static size_t item_make_header(const uint8_t nkey, const client_flags_t flags, const int nbytes,
                      char *suffix, uint8_t *nsuffix) {
+    printf("memcached/items.c :: item_make_header\n");
+    printf("\t nkey : %d\n", nkey);
+    printf("\t nbytes : %d\n", nbytes);
+    printf("\t sizeof(item) : %zu\n", sizeof(item));
+
     if (flags == 0) {
         *nsuffix = 0;
     } else {
         *nsuffix = sizeof(flags);
     }
-    return sizeof(item) + nkey + *nsuffix + nbytes;
+    return sizeof(item) + nkey + *nsuffix + nbytes; //48 + key길이(6) + flag가 0이라 nsuffix도 0 + byte길이(9)
 }
 
 item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
+    printf("memcached/items.c :: do_item_alloc_pull\n");
     item *it = NULL;
     int i;
     /* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -248,6 +261,12 @@ item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain) {
 
 item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t flags,
                     const rel_time_t exptime, const int nbytes) {
+    printf("memcached/item.c :: do_item_alloc()\n");
+    printf("\t key : %s\n", key); //key_0
+    printf("\t nkey : %zu\n", nkey);
+    printf("\t nbytes : %d\n", nbytes);
+    printf("\t exptime : %u\n", exptime);
+
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
@@ -256,6 +275,8 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         return 0;
 
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
+    printf("memcached/item.c :: do_item_alloc() - [2]\n");
+    printf("\t ntotal : %u\n", ntotal);
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
     }
@@ -269,6 +290,8 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
      *  chunks while reading the upload.
      */
     if (ntotal > settings.slab_chunk_size_max) {
+        //안 들어감
+        printf("memcached/item.c :: do_item_alloc() - [3]\n");
         /* We still link this item into the LRU for the larger slab class, but
          * we're pulling a header from an entirely different slab class. The
          * free routines handle large items specifically.
@@ -290,6 +313,7 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         if (it != NULL)
             it->it_flags |= ITEM_CHUNKED;
     } else {
+        printf("memcached/item.c :: do_item_alloc() - [4]\n");
         it = do_item_alloc_pull(ntotal, id);
     }
 

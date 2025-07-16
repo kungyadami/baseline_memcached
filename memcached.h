@@ -382,6 +382,9 @@ struct mpi_conn_info{
     char   *ritem;  /** when we read in an item's value, it goes here */
     int    rlbytes;
 
+    rel_time_t last_cmd_time;
+    bool   noreply;   /* True if the reply should not be sent. */
+
     /**
      * item is used to hold an item structure created after reading the command
      * line of set/add/replace commands, but before we finished reading the actual

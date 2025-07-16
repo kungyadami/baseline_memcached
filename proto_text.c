@@ -1,3 +1,28 @@
+/*
+yedam
+set 연산에서 여기서 불리는 함수는
+1. try_read_command_ascii
+2. process_command_ascii
+3. tokenize_command
+4. process_update_command
+5. set_noreply_maybe
+6. complete_nread_ascii -> 여기서 STORED 생성
+
+
+get 연산에서 불리는 함수는
+1. try_read_command_ascii
+2. process_command_ascii
+3. tokenize_command
+4. process_get_command
+5. make_ascii_get_suffix
+
+
+*/
+
+
+
+
+
 /* -*- Mode: C; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
  * Functions for handling the text related protocols, original and meta.
@@ -134,6 +159,7 @@ static void _finalize_mset(conn *c, int nbytes, enum store_item_type ret, uint64
  * 저장할 아이템은 c->item에 준비되어 있습니다.
  */
 void complete_nread_ascii(conn *c) {
+    printf("memcached/proto_text.c :: complete_nread_ascii\n");
     assert(c != NULL);
 
     item *it = c->item; //item은 저장할 데이터들을 뜻함 ...=_=
@@ -183,7 +209,7 @@ void complete_nread_ascii(conn *c) {
     } else {
       uint64_t cas = 0;
       c->thread->cur_sfd = c->sfd; // cuddle sfd for logging.
-      //printf("[yedam] - proto_text.c :: complete_nread_ascii(), store_item call\n");
+      //printf("memcached/- proto_text.c :: complete_nread_ascii(), store_item call\n");
       ret = store_item(it, comm, c->thread, &nbytes, &cas, c->cas ? c->cas : get_cas_id(), c->set_stale);
       c->cas = 0;
 
@@ -222,25 +248,25 @@ void complete_nread_ascii(conn *c) {
           switch (ret) {
           case STORED:
             if (settings.verbose) {
-              printf("[yedam] - proto_text.c :: complete_nread_ascii(), STORED\n");
+              printf("memcached/- proto_text.c :: complete_nread_ascii(), STORED\n");
             }
               out_string(c, "STORED"); //여기서 최종 STORED를 내뱉는듯??
               break;
           case EXISTS:
             if (settings.verbose) {
-              printf("[yedam] - proto_text.c :: complete_nread_ascii(), EXISTS\n");
+              printf("memcached/- proto_text.c :: complete_nread_ascii(), EXISTS\n");
             }
               out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
             if (settings.verbose) {
-              printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_FOUND\n");
+              printf("memcached/- proto_text.c :: complete_nread_ascii(), NOT_FOUND\n");
             }
               out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
             if (settings.verbose) {
-              printf("[yedam] - proto_text.c :: complete_nread_ascii(), NOT_STORED\n");
+              printf("memcached/- proto_text.c :: complete_nread_ascii(), NOT_STORED\n");
             }
               out_string(c, "NOT_STORED");
               break;
@@ -305,17 +331,22 @@ void complete_nread_ascii(conn *c) {
  *   }
  */
 static size_t tokenize_command(char *command, token_t *tokens, const size_t max_tokens) {
+    printf("memcached/proto_text.c :: tokenize_command\n");
+    printf("memcached/proto_text.c :: tokenize_command, command : %s\n", command);
+    printf("memcached/proto_text.c :: tokenize_command, max_tokens : %zu\n", max_tokens);
     char *s, *e;
     size_t ntokens = 0;
     assert(command != NULL && tokens != NULL && max_tokens > 1);
     size_t len = strlen(command);
     unsigned int i = 0;
 
-    s = e = command;
+    s = e = command; //s, e에도 각각 'set key_0 0 0 7'이 들어있음
     for (i = 0; i < len; i++) {
         if (*e == ' ') {
             if (s != e) {
+                printf("[%d]th tokenizing - *e is ' ' and s != e, e : %s\n",i, e);
                 tokens[ntokens].value = s;
+                printf("[%d]th tokenizing - tokens value : %s\n", i, tokens[ntokens].value);
                 tokens[ntokens].length = e - s;
                 ntokens++;
                 *e = '\0';
@@ -327,6 +358,7 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
             }
             s = e + 1;
         }
+        printf("[%d]th tokenizing - e++, e : %s\n",i, e);
         e++;
     }
 
@@ -343,11 +375,13 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
     tokens[ntokens].value =  *e == '\0' ? NULL : e;
     tokens[ntokens].length = 0;
     ntokens++;
+    printf("ntokens : %zu\n", ntokens);
 
     return ntokens;
 }
 
 int try_read_command_asciiauth(conn *c) {
+     printf("memcached/proto_text.c :: try_read_command_asciiauth\n");
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
     char *cont = NULL;
@@ -445,7 +479,7 @@ int try_read_command_asciiauth(conn *c) {
         out_string(c, "STORED");
         c->authenticated = true;
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: try_read_command_asciiauth()1\n");
+            printf("memcached/proto_text.c :: try_read_command_asciiauth()1\n");
         }
         c->try_read_command = try_read_command_ascii;
         pthread_mutex_lock(&c->thread->stats.mutex);
@@ -464,7 +498,7 @@ int try_read_command_asciiauth(conn *c) {
 
 int try_read_command_ascii(conn *c) {
     if (settings.verbose) {
-        printf("[yedam] proto_text.c :: try_read_command_ascii()\n");
+        printf("memcached/proto_text.c :: try_read_command_ascii()\n");
     }
     char *el, *cont;
 
@@ -472,15 +506,23 @@ int try_read_command_ascii(conn *c) {
         return 0;
 
     el = memchr(c->rcurr, '\n', c->rbytes);
+    printf("memcached/proto_text.c :: try_read_command_ascii() c->rbytes : %d\n", c->rbytes);
+    printf("memcached/proto_text.c :: try_read_command_ascii() c->rcurr : %s\n", c->rcurr);
+    printf("memcached/proto_text.c :: try_read_command_ascii() el : %s\n", el);
+
+
     if (!el) {
         if (c->rbytes > 2048) {
+            printf("memcached/proto_text.c :: try_read_command_ascii() c->rbytes : %d\n", c->rbytes);
             /*
              * We didn't have a '\n' in the first few k. This _has_ to be a
              * large multiget, if not we should just nuke the connection.
              */
             char *ptr = c->rcurr;
             while (*ptr == ' ') { /* ignore leading whitespaces */
+                //여기는 안 들어감
                 ++ptr;
+                printf("memcached/proto_text.c :: try_read_command_ascii() 2\n");
             }
 
             if (ptr - c->rcurr > 100 ||
@@ -504,22 +546,28 @@ int try_read_command_ascii(conn *c) {
         return 0;
     }
     cont = el + 1;
-    if ((el - c->rcurr) > 1 && *(el - 1) == '\r') {
+    printf("memcached/proto_text.c :: try_read_command_ascii() cont : %s\n", cont);
+    printf("memcached/proto_text.c :: try_read_command_ascii() el : %s\n", el);
+    if ((el - c->rcurr) > 1 && *(el - 1) == '\r') { //여기가 진짜 줄바꿈 구간이 맞는지 확인하는 부분 같다
         el--;
+        printf("memcached/proto_text.c :: try_read_command_ascii() el--\n");
     }
     *el = '\0';
+    printf("memcached/proto_text.c :: try_read_command_ascii() el : %s\n", el);
 
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time;
     if (settings.verbose) {
-        printf("[yedam] proto_text.c :: try_read_command_ascii()2\n");
+        printf("memcached/proto_text.c :: try_read_command_ascii()3\n");
     }
     //여기서 process_command_ascii로 들어가고, 거기서 get command ... 등등
+    printf("memcached/proto_text.c :: try_read_command_ascii() rcurr : %s\n", c->rcurr);
     process_command_ascii(c, c->rcurr);
-
+    printf("memcached/proto_text.c :: try_read_command_ascii() 4\n");
     c->rbytes -= (cont - c->rcurr);
     c->rcurr = cont;
+    printf("memcached/proto_text.c :: try_read_command_ascii() 5, c->rbytes : %d\n", c->rbytes);
 
     assert(c->rcurr <= (c->rbuf + c->rsize));
 
@@ -529,7 +577,7 @@ int try_read_command_ascii(conn *c) {
 
 static inline bool set_noreply_maybe(conn *c, token_t *tokens, size_t ntokens)
 {
-    //printf("[yedam] proto_text.c :: set_noreply_maybe()\n");
+    printf("memcached/proto_text.c :: set_noreply_maybe()\n");
     int noreply_index = ntokens - 2;
 
     /*
@@ -548,6 +596,7 @@ static inline bool set_noreply_maybe(conn *c, token_t *tokens, size_t ntokens)
 
 /* client flags == 0 means use no storage for client flags */
 static inline int make_ascii_get_suffix(char *suffix, item *it, bool return_cas, int nbytes) {
+    printf("memcached/proto_text.c :: make_ascii_get_suffix\n");
     char *p = suffix;
     *p = ' ';
     p++;
@@ -573,6 +622,7 @@ static inline int make_ascii_get_suffix(char *suffix, item *it, bool return_cas,
 
 /* ntokens is overwritten here... shrug.. */
 static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens, bool return_cas, bool should_touch) {
+    printf("memcached/proto_text.c :: process_get_command\n");
     char *key;
     size_t nkey;
     item *it;
@@ -604,7 +654,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 goto stop;
             }
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_get_command()\n");
+                printf("memcached/proto_text.c :: process_get_command()\n");
             }
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
@@ -658,7 +708,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 
                 if (settings.verbose > 1) {
                     int ii;
-                    //printf("[yedam] proto_text.c :: process_get_command()-[1]\n");
+                    //printf("memcached/proto_text.c :: process_get_command()-[1]\n");
                     fprintf(stderr, ">%d sending key ", c->sfd);
                     for (ii = 0; ii < it->nkey; ++ii) {
                         fprintf(stderr, "%c", key[ii]);
@@ -751,6 +801,7 @@ stop:
 }
 
 inline static void process_stats_detail(conn *c, const char *command) {
+    printf("memcached/proto_text.c :: process_stats_detail\n");
     assert(c != NULL);
 
     if (strcmp(command, "on") == 0) {
@@ -772,6 +823,7 @@ inline static void process_stats_detail(conn *c, const char *command) {
 }
 
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_stat\n");
     const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
     assert(c != NULL);
 
@@ -873,6 +925,7 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
 
 // slow snprintf for debugging purposes.
 static void process_meta_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_meta_command\n");
     assert(c != NULL);
 
     if (ntokens < 3 || tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) {
@@ -896,7 +949,7 @@ static void process_meta_command(conn *c, token_t *tokens, const size_t ntokens)
 
     bool overflow; // not used here.
     if (settings.verbose) {
-        printf("[yedam] proto_text.c :: process_meta_command()\n");
+        printf("memcached/proto_text.c :: process_meta_command()\n");
     }
     item *it = limited_get(key, nkey, c->thread, 0, false, DONT_UPDATE, &overflow);
     if (it) {
@@ -970,6 +1023,7 @@ struct _meta_flags {
 
 static int _meta_flag_preparse(token_t *tokens, const size_t start,
         struct _meta_flags *of, char **errstr) {
+    printf("memcached/proto_text.c :: _meta_flag_preparse\n");
     unsigned int i;
     size_t ret;
     int32_t tmp_int;
@@ -1113,6 +1167,7 @@ static int _meta_flag_preparse(token_t *tokens, const size_t start,
 }
 
 static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_mget_command\n");
     char *key;
     size_t nkey;
     item *it;
@@ -1162,12 +1217,12 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
     bool overflow = false;
     if (!of.locked) {
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: process_mget_command()1\n");
+            printf("memcached/proto_text.c :: process_mget_command()1\n");
         }
         it = limited_get(key, nkey, c->thread, 0, false, !of.no_update, &overflow);
     } else {
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: process_mget_command()2\n");
+            printf("memcached/proto_text.c :: process_mget_command()2\n");
         }
         // If we had to lock the item, we're doing our own bump later.
         it = limited_get_locked(key, nkey, c->thread, DONT_UPDATE, &hv, &overflow);
@@ -1195,7 +1250,7 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
             memcpy(ITEM_data(it), "\r\n", 2);
             // NOTE: This initializes the CAS value.
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_mget_command()\n");
+                printf("memcached/proto_text.c :: process_mget_command()\n");
             }
             do_item_link(it, hv, of.has_cas_in ? of.cas_id_in : get_cas_id());
             item_created = true;
@@ -1442,6 +1497,7 @@ error:
 }
 
 static void process_mset_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_mset_command\n");
     char *key;
     size_t nkey;
     item *it;
@@ -1657,6 +1713,7 @@ error:
 }
 
 static void process_mdelete_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_mdelete_command\n");
     char *key;
     size_t nkey;
     item *it = NULL;
@@ -1732,7 +1789,7 @@ static void process_mdelete_command(conn *c, token_t *tokens, const size_t ntoke
             item *new_it = item_alloc(key, nkey, of.client_flags, of.exptime, 2);
             if (new_it != NULL) {
                 memcpy(ITEM_data(new_it), "\r\n", 2);
-                //printf("[yedam] - proxy.text.c :: process_mdelete_command(), do_store_item call\n");
+                //printf("memcached/- proxy.text.c :: process_mdelete_command(), do_store_item call\n");
                 if (do_store_item(new_it, NREAD_SET, c->thread, hv, NULL, NULL,
                             of.has_cas_in ? of.cas_id_in : ITEM_get_cas(it), CAS_NO_STALE)) {
                     do_item_remove(it);
@@ -1810,6 +1867,7 @@ error:
 }
 
 static void process_marithmetic_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_marithmetic_command\n");
     char *key;
     size_t nkey;
     int i;
@@ -1909,7 +1967,7 @@ static void process_marithmetic_command(conn *c, token_t *tokens, const size_t n
             if (it != NULL) {
                 memcpy(ITEM_data(it), tmpbuf, vlen);
                 memcpy(ITEM_data(it) + vlen, "\r\n", 2);
-                //printf("[yedam] - proxy.text.c :: process_marithmetic_command(), do_store_item call\n");
+                //printf("memcached/- proxy.text.c :: process_marithmetic_command(), do_store_item call\n");
                 if (do_store_item(it, NREAD_ADD, c->thread, hv, NULL, NULL,
                             of.has_cas_in ? of.cas_id_in : get_cas_id(), CAS_NO_STALE)) {
                     item_created = true;
@@ -2042,25 +2100,24 @@ error:
 
 
 static void process_update_command(conn *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
-    //printf("[yedam] - proto_text.c :: process_update_command()-[1]\n");
+    printf("memcached/proto_text.c :: process_update_command()-[1]\n");
     char *key;
     size_t nkey;
     client_flags_t flags;
     int32_t exptime_int = 0;
     rel_time_t exptime = 0;
     int vlen;
+    printf("memcached/proto_text.c :: process_update_command()-[2], vlen : %d\n", vlen);
     uint64_t req_cas_id=0;
     item *it;
 
     assert(c != NULL);
-    //printf("[yedam] - proto_text.c :: process_update_command()-[2]\n");
     set_noreply_maybe(c, tokens, ntokens);
 
     if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) { //error
         out_string(c, "CLIENT_ERROR bad command line format");
         return;
     }
-    //printf("[yedam] - proto_text.c :: process_update_command()-[3]\n");
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
 
@@ -2070,9 +2127,9 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         out_string(c, "CLIENT_ERROR bad command line format");
         return;
     }
-
+    printf("memcached/proto_text.c :: process_update_command()-[3], vlen : %d\n", vlen);
     exptime = realtime(EXPTIME_TO_POSITIVE_TIME(exptime_int));
-    //printf("[yedam] - proto_text.c :: process_update_command()-[4]\n");
+    printf("memcached/proto_text.c :: process_update_command()-[4], exptime : %u\n", exptime);
     // does cas value exist?
     if (handle_cas) { //error
         if (!safe_strtoull(tokens[5].value, &req_cas_id)) {
@@ -2086,15 +2143,16 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         return;
     }
     vlen += 2;
-    //printf("[yedam] - proto_text.c :: process_update_command()-[5]\n");
+    printf("memcached/- proto_text.c :: process_update_command()-[5]\n");
     if (settings.detail_enabled) {
-        //printf("[yedam] - proto_text.c :: process_update_command()-[5-1]\n");
+        printf("memcached/- proto_text.c :: process_update_command()-[5-1]\n");
         stats_prefix_record_set(key, nkey);
     }
 
     it = item_alloc(key, nkey, flags, exptime, vlen);
 
-    if (it == 0) {
+    if (it == 0) { //안들어감
+        printf("memcached/- proto_text.c :: process_update_command()-[6]\n");
         enum store_item_type status;
         if (! item_size_ok(nkey, flags, vlen)) {
             out_string(c, "SERVER_ERROR object too large for cache");
@@ -2109,7 +2167,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
             c->thread->stats.store_no_memory++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
         }
-        //printf("[yedam] - proto_text.c :: process_update_command()-[5-2]\n");
+        //printf("memcached/- proto_text.c :: process_update_command()-[5-2]\n");
         LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
                 NULL, status, comm, key, nkey, 0, 0, c->sfd);
         /* swallow the data line */
@@ -2120,7 +2178,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
          * Unacceptable for SET. Anywhere else too? */
         if (comm == NREAD_SET) {
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_update_command()\n");
+                printf("memcached/proto_text.c :: process_update_command()\n");
             }
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
@@ -2133,7 +2191,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         return;
     }
     ITEM_set_cas(it, req_cas_id);
-    //printf("[yedam] - proto_text.c :: process_update_command()-[6]\n");
+    printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
     c->item = it;
 #ifdef NEED_ALIGN
     if (it->it_flags & ITEM_CHUNKED) {
@@ -2146,11 +2204,12 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
 #endif
     c->rlbytes = it->nbytes;
     c->cmd = comm;
-    //printf("[yedam] - proto_text.c :: process_update_command()-[7]\n");
+    //printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
     conn_set_state(c, conn_nread);
 }
 
 static void process_touch_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_touch_command\n");
     char *key;
     size_t nkey;
     int32_t exptime_int = 0;
@@ -2195,6 +2254,7 @@ static void process_touch_command(conn *c, token_t *tokens, const size_t ntokens
 }
 
 static void process_arithmetic_command(conn *c, token_t *tokens, const size_t ntokens, const bool incr) {
+    printf("memcached/proto_text.c :: process_arithmetic_command\n");
     char temp[INCR_MAX_STORAGE_LEN];
     uint64_t delta;
     char *key;
@@ -2245,6 +2305,7 @@ static void process_arithmetic_command(conn *c, token_t *tokens, const size_t nt
 
 
 static void process_delete_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_delete_command\n");
     char *key;
     size_t nkey;
     item *it;
@@ -2300,6 +2361,7 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
 }
 
 static void process_verbosity_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_verbosity_command\n");
     unsigned int level;
 
     assert(c != NULL);
@@ -2317,6 +2379,7 @@ static void process_verbosity_command(conn *c, token_t *tokens, const size_t nto
 
 #ifdef MEMCACHED_DEBUG
 static void process_misbehave_command(conn *c) {
+    printf("memcached/proto_text.c :: process_misbehave_command\n");
     int allowed = 0;
 
     // try opening new TCP socket
@@ -2340,6 +2403,7 @@ static void process_misbehave_command(conn *c) {
 }
 
 static void process_debugtime_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_debugtime_command\n");
     if (strcmp(tokens[1].value, "p") == 0) {
         if (!is_paused) {
             is_paused = true;
@@ -2361,6 +2425,7 @@ static void process_debugtime_command(conn *c, token_t *tokens, const size_t nto
 }
 
 static void process_debugitem_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_debugitem_command\n");
     if (strcmp(tokens[1].value, "lock") == 0) {
         uint32_t hv = hash(tokens[2].value, tokens[2].length);
         item_lock(hv);
@@ -2370,7 +2435,7 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
     } else if (strcmp(tokens[1].value, "ref") == 0) {
         // intentionally leak a reference.
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: process_debugitem_command()\n");
+            printf("memcached/proto_text.c :: process_debugitem_command()\n");
         }
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
@@ -2381,7 +2446,7 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
         // double unlink. debugger must have already ref'ed it or this
         // underflows.
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: process_debugitem_command()2\n");
+            printf("memcached/proto_text.c :: process_debugitem_command()2\n");
         }
         item *it = item_get(tokens[2].value, tokens[2].length, c->thread, DONT_UPDATE);
         if (it == NULL) {
@@ -2399,6 +2464,7 @@ static void process_debugitem_command(conn *c, token_t *tokens, const size_t nto
 #endif
 
 static void process_slabs_automove_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_slabs_automove_command\n");
     unsigned int level;
     double ratio;
 
@@ -2449,6 +2515,7 @@ static void process_slabs_automove_command(conn *c, token_t *tokens, const size_
 
 /* TODO: decide on syntax for sampling? */
 static void process_watch_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_watch_command\n");
     uint16_t f = 0;
     int x;
     assert(c != NULL);
@@ -2510,6 +2577,7 @@ static void process_watch_command(conn *c, token_t *tokens, const size_t ntokens
 }
 
 static void process_memlimit_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_memlimit_command\n");
     uint32_t memlimit;
     assert(c != NULL);
 
@@ -2537,6 +2605,7 @@ static void process_memlimit_command(conn *c, token_t *tokens, const size_t ntok
 }
 
 static void process_lru_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_lru_command\n");
     uint32_t pct_hot;
     uint32_t pct_warm;
     double hot_factor;
@@ -2594,6 +2663,7 @@ static void process_lru_command(conn *c, token_t *tokens, const size_t ntokens) 
 }
 #ifdef EXTSTORE
 static void process_extstore_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_extstore_command\n");
     set_noreply_maybe(c, tokens, ntokens);
     bool ok = true;
     if (ntokens < 4) {
@@ -2657,6 +2727,7 @@ static void process_extstore_command(conn *c, token_t *tokens, const size_t ntok
 }
 #endif
 static void process_flush_all_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_flush_all_command\n");
     int32_t exptime = 0;
     rel_time_t new_oldest = 0;
 
@@ -2697,6 +2768,7 @@ static void process_flush_all_command(conn *c, token_t *tokens, const size_t nto
 }
 
 static void process_version_command(conn *c) {
+    printf("memcached/proto_text.c :: process_version_command\n");
     out_string(c, "VERSION " VERSION);
 }
 
@@ -2707,6 +2779,7 @@ static void process_quit_command(conn *c) {
 }
 
 static void process_shutdown_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_shutdown_command\n");
     if (!settings.shutdown_command) {
         out_string(c, "ERROR: shutdown not enabled");
         return;
@@ -2726,6 +2799,7 @@ static void process_shutdown_command(conn *c, token_t *tokens, const size_t ntok
 }
 
 static void process_slabs_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_slabs_command\n");
     if (ntokens == 5 && strcmp(tokens[COMMAND_TOKEN + 1].value, "reassign") == 0) {
         int src, dst, rv;
 
@@ -2768,6 +2842,7 @@ static void process_slabs_command(conn *c, token_t *tokens, const size_t ntokens
 }
 
 static void process_lru_crawler_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_lru_crawler_command\n");
     if (ntokens == 4 && strcmp(tokens[COMMAND_TOKEN + 1].value, "crawl") == 0) {
         int rv;
         if (settings.lru_crawler == false) {
@@ -2916,6 +2991,7 @@ static void process_lru_crawler_command(conn *c, token_t *tokens, const size_t n
 }
 #ifdef TLS
 static void process_refresh_certs_command(conn *c, token_t *tokens, const size_t ntokens) {
+    printf("memcached/proto_text.c :: process_refresh_certs_command\n");
     set_noreply_maybe(c, tokens, ntokens);
     char *errmsg = NULL;
     if (refresh_certs(&errmsg)) {
@@ -2936,9 +3012,7 @@ static void process_refresh_certs_command(conn *c, token_t *tokens, const size_t
 // Leaving this note here to spend more time on a fix when necessary, or if an
 // opportunity becomes obvious.
 void process_command_ascii(conn *c, char *command) {
-    if (settings.verbose) {
-        printf("[yedam] proto_text.c :: process_command_ascii()\n");
-    }
+    printf("memcached/proto_text.c :: process_command_ascii()\n");
 
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
@@ -3006,33 +3080,33 @@ void process_command_ascii(conn *c, char *command) {
         if (strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) {
             //여기에 들어가서 process_get_command() 실행한다
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_get_command() - get\n");
+                printf("memcached/proto_text.c :: process_get_command() - get\n");
             }
             process_get_command(c, tokens, ntokens, false, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0) {
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_get_command() - gets\n");
+                printf("memcached/proto_text.c :: process_get_command() - gets\n");
             }
             process_get_command(c, tokens, ntokens, true, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gat") == 0) {
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_get_command() - gat\n");
+                printf("memcached/proto_text.c :: process_get_command() - gat\n");
             }
             process_get_command(c, tokens, ntokens, false, true);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gats") == 0) {
             if (settings.verbose) {
-                printf("[yedam] proto_text.c :: process_get_command() - gats\n");
+                printf("memcached/proto_text.c :: process_get_command() - gats\n");
             }
             process_get_command(c, tokens, ntokens, true, true);
         } else {
             out_string(c, "ERROR");
         }
     } else if (first == 's') {
-        //printf("[yedam] proto_text.c :: process_command_ascii()-first is 's'\n");
+        //printf("memcached/proto_text.c :: process_command_ascii()-first is 's'\n");
         if (strcmp(tokens[COMMAND_TOKEN].value, "set") == 0 && (comm = NREAD_SET)) {
 
             WANT_TOKENS_OR(ntokens, 6, 7);
-            //printf("[yedam] proto_text.c :: process_command_ascii()-process_update_command call\n");
+            //printf("memcached/proto_text.c :: process_command_ascii()-process_update_command call\n");
             process_update_command(c, tokens, ntokens, comm, false);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "stats") == 0) {
 
@@ -3116,7 +3190,7 @@ void process_command_ascii(conn *c, char *command) {
         // we should look deeper into client code and remove this.
         WANT_TOKENS_MIN(ntokens, 3);
         if (settings.verbose) {
-            printf("[yedam] proto_text.c :: process_get_command() - bget\n");
+            printf("memcached/proto_text.c :: process_get_command() - bget\n");
         }
         process_get_command(c, tokens, ntokens, false, false);
 
@@ -3168,8 +3242,213 @@ void process_command_ascii(conn *c, char *command) {
             out_string(c, "ERROR");
         }
     }
-    //printf("[yedam] proto_text.c :: process_command_ascii(), return\n");
+    //printf("memcached/proto_text.c :: process_command_ascii(), return\n");
     return;
 }
 
 
+
+/*
+1. try_read_command_ascii
+2. process_command_ascii
+3. tokenize_command
+4. process_update_command
+5. set_noreply_maybe
+6. complete_nread_ascii -> 여기서 STORED 생성
+
+*/
+
+#if DISABLE_MPI_FUNCTIONS
+
+
+void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
+    printf("memcached/proto_text.c :: process_command_ascii()\n");
+
+    token_t tokens[MAX_TOKENS];
+    size_t ntokens;
+    int comm;
+
+    assert(c != NULL);
+
+    ntokens = tokenize_command(command, tokens, MAX_TOKENS);
+    // All commands need a minimum of two tokens: cmd and NULL finalizer
+    // There are also no valid commands shorter than two bytes.
+    if (ntokens < 2 || tokens[COMMAND_TOKEN].length < 2) {
+        exit(0);
+        //return;
+    }
+
+    // Meta commands are all 2-char in length.
+    char first = tokens[COMMAND_TOKEN].value[0];
+    if (first == 's') {
+        if (strcmp(tokens[COMMAND_TOKEN].value, "set") == 0 && (comm = NREAD_SET)) {
+            WANT_TOKENS_OR(ntokens, 6, 7);
+            mpi_process_update_command(c, tokens, ntokens, comm, false);
+        }
+    } 
+    return;
+}
+
+static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *tokens, size_t ntokens)
+{
+    //잘못 답하는경우인듯
+    printf("memcached/proto_text.c :: mpi_set_noreply_maybe()\n");
+    int noreply_index = ntokens - 2;
+
+    /*
+      NOTE: this function is not the first place where we are going to
+      send the reply.  We could send it instead from process_command()
+      if the request line has wrong number of tokens.  However parsing
+      malformed line for "noreply" option is not reliable anyway, so
+      it can't be helped.
+    */
+    if (tokens[noreply_index].value
+        && strcmp(tokens[noreply_index].value, "noreply") == 0) {
+        c->noreply = true;
+    }
+    return c->noreply;
+}
+
+
+void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
+    char *key;
+    size_t nkey;
+    client_flags_t flags;
+    int32_t exptime_int = 0;
+    rel_time_t exptime = 0;
+    int vlen;
+    uint64_t req_cas_id=0;
+    item *it;
+
+    assert(c != NULL);
+
+    set_noreply_maybe(c, tokens, ntokens);
+
+    // if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) { //error
+    //     out_string(c, "CLIENT_ERROR bad command line format");
+    //     return;
+    // }
+
+    key = tokens[KEY_TOKEN].value;
+    nkey = tokens[KEY_TOKEN].length;
+
+    // if (! (safe_strtoflags(tokens[2].value, &flags) //error
+    //        && safe_strtol(tokens[3].value, &exptime_int)
+    //        && safe_strtol(tokens[4].value, (int32_t *)&vlen))) {
+    //     out_string(c, "CLIENT_ERROR bad command line format");
+    //     return;
+    // }
+
+    exptime = realtime(EXPTIME_TO_POSITIVE_TIME(exptime_int));
+
+    //// does cas value exist?
+    // if (handle_cas) { //error
+    //     if (!safe_strtoull(tokens[5].value, &req_cas_id)) {
+    //         out_string(c, "CLIENT_ERROR bad command line format");
+    //         return;
+    //     }
+    // }
+
+    // if (vlen < 0 || vlen > (INT_MAX - 2)) { //error
+    //     out_string(c, "CLIENT_ERROR bad command line format");
+    //     return;
+    // }
+    vlen += 2;
+    //여기서 다시
+    if (settings.detail_enabled) {
+        stats_prefix_record_set(key, nkey);
+    }
+
+    it = item_alloc(key, nkey, flags, exptime, vlen);
+
+    // if (it == 0) {
+    //     enum store_item_type status;
+    //     if (! item_size_ok(nkey, flags, vlen)) {
+    //         out_string(c, "SERVER_ERROR object too large for cache");
+    //         status = TOO_LARGE;
+    //         pthread_mutex_lock(&c->thread->stats.mutex);
+    //         c->thread->stats.store_too_large++;
+    //         pthread_mutex_unlock(&c->thread->stats.mutex);
+    //     } else {
+    //         out_of_memory(c, "SERVER_ERROR out of memory storing object");
+    //         status = NO_MEMORY;
+    //         pthread_mutex_lock(&c->thread->stats.mutex);
+    //         c->thread->stats.store_no_memory++;
+    //         pthread_mutex_unlock(&c->thread->stats.mutex);
+    //     }
+    //     //printf("memcached/- proto_text.c :: process_update_command()-[5-2]\n");
+    //     LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
+    //             NULL, status, comm, key, nkey, 0, 0, c->sfd);
+    //     /* swallow the data line */
+    //     conn_set_state(c, conn_swallow);
+    //     c->sbytes = vlen;
+
+    //     /* Avoid stale data persisting in cache because we failed alloc.
+    //      * Unacceptable for SET. Anywhere else too? */
+    //     if (comm == NREAD_SET) {
+    //         if (settings.verbose) {
+    //             printf("memcached/proto_text.c :: process_update_command()\n");
+    //         }
+    //         it = item_get(key, nkey, c->thread, DONT_UPDATE);
+    //         if (it) {
+    //             item_unlink(it);
+    //             STORAGE_delete(c->thread->storage, it);
+    //             item_remove(it);
+    //         }
+    //     }
+
+    //     return;
+    // }
+    ITEM_set_cas(it, req_cas_id);
+    //printf("memcached/- proto_text.c :: process_update_command()-[6]\n");
+    c->item = it;
+#ifdef NEED_ALIGN
+    if (it->it_flags & ITEM_CHUNKED) {
+        c->ritem = ITEM_schunk(it);
+    } else {
+        c->ritem = ITEM_data(it);
+    }
+#else
+    c->ritem = ITEM_data(it);
+#endif
+    c->rlbytes = it->nbytes;
+    c->cmd = comm;
+    //printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
+    //conn_set_state(c, conn_nread);
+    c->state = conn_nread;
+}
+
+
+
+int mpi_try_read_command_ascii(struct mpi_conn_info *c) {
+    char *el, *cont;
+
+    if (c->rbytes == 0)
+        return 0;
+
+    el = memchr(c->rcurr, '\n', c->rbytes);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() c->rbytes : %d\n", c->rbytes);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() c->rcurr : %s\n", c->rcurr);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() el : %s\n", el);
+
+    cont = el + 1;
+    if ((el - c->rcurr) > 1 && *(el - 1) == '\r') {
+        el--;
+    }
+    *el = '\0';
+
+    //assert(cont <= (c->rcurr + c->rbytes));
+
+    c->last_cmd_time = current_time; //시간 업데이트하기
+
+    mpi_process_command_ascii(c, c->rcurr);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 4\n");
+    c->rbytes -= (cont - c->rcurr);
+    c->rcurr = cont;
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 5, c->rbytes : %d\n", c->rbytes);
+
+    assert(c->rcurr <= (c->rbuf + c->rsize));
+
+    return 1;
+}
+#endif
