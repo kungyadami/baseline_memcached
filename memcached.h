@@ -28,7 +28,7 @@
 /* FreeBSD 4.x doesn't have IOV_MAX exposed. */
 #ifndef IOV_MAX
 #if defined(__FreeBSD__) || defined(__APPLE__) || defined(__GNU__)
-# define IOV_MAX 1024
+#define IOV_MAX 1024
 /* GNU/Hurd don't set MAXPATHLEN
  * http://www.gnu.org/software/hurd/hurd/porting/guidelines.html#PATH_MAX_tt_MAX_PATH_tt_MAXPATHL */
 #ifndef MAXPATHLEN
@@ -52,6 +52,11 @@
 #include "logger.h"
 #include "queue.h"
 #include "util.h"
+
+#include <mpi.h>
+
+#define DISABLE_SOCKET_FUNCTIONS 0
+#define DISABLE_MPI_FUNCTIONS 1
 
 #ifdef EXTSTORE
 #include "crc32c.h"
@@ -362,6 +367,57 @@ struct slab_stats {
     X(proxy_conn_oom) \
     X(proxy_req_active)
 #endif
+
+#if DISABLE_MPI_FUNCTIONS
+struct mpi_conn_info{
+    int  rank;
+    enum conn_states  state;
+    enum bin_substates substate;
+
+    char   *rbuf;   /** buffer to read commands into */
+    char   *rcurr;  /** but if we parsed some already, this is where we stopped */
+    int    rsize;   /** total allocated size of rbuf */
+    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
+
+    char   *ritem;  /** when we read in an item's value, it goes here */
+    int    rlbytes;
+
+    /**
+     * item is used to hold an item structure created after reading the command
+     * line of set/add/replace commands, but before we finished reading the actual
+     * data. The data is read into ITEM_data(item) to avoid extra copying.
+     */
+
+    void   *item;     /* for commands set/add/replace  */
+
+    /* data for the swallow state */
+    int    sbytes;    /* how many bytes to swallow */
+
+    int resps_suspended; /* see notes on io_queue_cb_t */
+
+    enum protocol protocol;   /* which protocol this connection speaks */
+    enum network_transport transport; /* what transport is used by this connection */
+    enum close_reasons close_reason; /* reason for transition into conn_closing */
+
+    /* current stats command */
+    struct {
+        char *buffer;
+        size_t size;
+        size_t offset;
+    } stats;
+
+    uint64_t cas; /* the cas to return */
+    uint64_t tag; /* listener stocket tag */
+    short cmd; /* current command being processed */
+    int opaque;
+    int keylen;
+
+};
+
+#endif
+
+
+
 
 /**
  * Stats stored per-thread.
@@ -823,6 +879,8 @@ struct _io_pending_t {
     STAILQ_ENTRY(_io_pending_t) iop_next; // queue chain.
     char data[120];
 };
+
+
 
 /**
  * The structure representing a connection into memcached.

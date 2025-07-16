@@ -61,14 +61,6 @@
 #include <sys/sysctl.h>
 #endif
 
-/*
-* yedam's mpi function & disable socket functions macro
-*/
-
-#include <mpi.h>
-
-#define DISABLE_SOCKET_FUNCTIONS 1
-
 
 /*
  * forward declarations
@@ -135,6 +127,101 @@ enum transmit_result {
     TRANSMIT_HARD_ERROR  /** Can't write (c->state is set to conn_closing) */
 };
 
+
+
+
+/*
+* yedam's mpi function & disable socket functions macro
+*/
+
+
+void waiting_recv(){
+    sleep(5);
+}
+
+#if DISABLE_MPI_FUNCTIONS
+struct mpi_conn_info *mpi_conn_arr;
+
+mpi_conn_init(struct mpi_conn_info* mpi_conn_arr){
+    mpi_conn_arr[1].rank = 1;
+    mpi_conn_arr[1].state = conn_read;
+    mpi_conn_arr[1].rsize = READ_BUFFER_SIZE; //16kb
+    mpi_conn_arr[1].rbuf = (char *)malloc((size_t)mpi_conn_arr[1].rsize);
+
+}
+
+static enum try_read_result mpi_try_read_network(struct mpi_conn_info* client){ 
+     printf("memcached/mpi_try_read_network\n");
+    enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
+    int res;
+    while(1){
+        int avail = client->rsize - client->rbytes;
+        printf("avail : %d\n", avail);
+        MPI_Status mpi_recv_status;
+        memset(client->rbuf, 0, avail);
+        MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s\n", client->rbuf);
+
+        if(res > 0){
+            gotdata = READ_DATA_RECEIVED;
+            client->rbytes += res;
+            break;
+        }
+        if(res == 0 || res == -1){
+            exit(0); //정상적으로 종료되는 건 아닌데 일단 종료시키기
+        }
+    }
+
+    return gotdata;
+}
+
+
+static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
+    printf("memcached/mpi_drive_machine\n");
+    struct mpi_conn_info* client = &mpi_conn_arr[1];
+    enum try_read_result res;
+    bool stop = false;
+    while(!stop){
+        switch(client->state){
+        case conn_read:
+            res = mpi_try_read_network(client);
+            switch(res){
+            case READ_DATA_RECEIVED:
+                client->state = conn_parse_cmd;
+                break;
+            }
+            break;
+        
+        case conn_write:
+            break;
+         
+        case conn_parse_cmd:
+            break;
+        }
+    }
+}
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Default methods to read from/ write to a socket */
 ssize_t tcp_read(conn *c, void *buf, size_t count) {
     assert (c != NULL);
@@ -148,27 +235,9 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
     if (settings.verbose) {
         printf("memcached/memcached.c :: tcp_sendmsg()\n");
     }
-
+    #if DISABLE_MPI_FUNCTIONS
     char mpi_send_buf[1024];
     ssize_t offset=0;
-
-    // // // 2. msg_iov: 데이터 버퍼
-    // printf("msg_iovlen: %d\n", msg->msg_iovlen);
-    // for (int i = 0; i < msg->msg_iovlen; i++) {
-    //     struct iovec *iov = &msg->msg_iov[i];
-    //     printf("msg_iov[%d]: %.*s (length: %zu)\n", i, (int)iov->iov_len, (char *)iov->iov_base, iov->iov_len);
-    //     snprintf()
-    // }
-
-    // // 3. msg_control: 제어 메시지 (예: 파일 디스크립터 전달)
-    // if (msg->msg_control && msg->msg_controllen > 0) {
-    //     printf("msg_control: present (%u bytes)\n", (unsigned int)msg->msg_controllen);
-    //     // 자세한 파싱은 cmsg 관련 로직이 필요함
-    // } else {
-    //     printf("msg_control: NULL or empty\n");
-    // }
-
-    //printf("msg_flags: %d\n", msg->msg_flags);
 
     for (int i = 0; i < msg->msg_iovlen; i++) {
         struct iovec *iov = &msg->msg_iov[i];
@@ -177,6 +246,7 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
     }
 
     printf("memcached/memcached.c :: tcp_sendmsg() msg_buf : %s\n", mpi_send_buf);
+    #endif
 
     assert (c != NULL);
 
@@ -184,19 +254,20 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
         ssize_t sent = sendmsg(c->sfd, msg, flags);
     #endif
 
-    // if (sent == -1) {
-    //     perror("sendmsg failed");
-    // } else {
-    //     printf("총 %zd 바이트 전송됨\n", sent);
-    // }
+    #if DISABLE_MPI_FUNCTIONS
+        printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송\n");
+        MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
+        printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송 완\n");
+        printf("\t offset : %zu\n", offset);
+    #endif
 
-    printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송\n");
-    MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
-    printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송 완\n");
-    printf("\t offset : %zu\n", offset);
+    #if DISABLE_SOCKET_FUNCTIONS
+    return sent;
+    #endif
 
-    //return sent;
+    #if DISABLE_MPI_FUNCTIONS
     return offset;
+    #endif
 }
 
 ssize_t tcp_write(conn *c, void *buf, size_t count) {
@@ -920,7 +991,7 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     //이벤트의 예시 : 소켓이 읽을 준비가 되었을 때 / 시그널이 도착했을 때 ..
     //어떤 fd(소켓 파일 디스크립터)에 어떤 일이 일어나는지를 미리 등록해두고, 그걸 이벤트로 사용해서 자동적으로 처리할 수 있도록 하는 것
 
-
+    
     event_set(&c->event, sfd, event_flags, event_handler, (void *)c);
     event_base_set(base, &c->event);
     c->ev_flags = event_flags;
@@ -2642,7 +2713,7 @@ static enum try_read_result try_read_network(conn *c) {
 
     if (c->rcurr != c->rbuf) {
         if (c->rbytes > 0) /* otherwise there's nothing to copy */
-            memmove(c->rbuf, c->rcurr, c->rbytes);
+            memmove(c->rbuf, c->rcurr, c->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
         c->rcurr = c->rbuf;
     }
 
@@ -2687,31 +2758,27 @@ static enum try_read_result try_read_network(conn *c) {
 
         /************************yedam code start**********************/
         //수신 버퍼
-        int size;
-        int rank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &size);
-        printf("memcached/memcached.c 통신그룹 내 rank 개수 : %d | my rank : %d\n", size, rank);
-        char mpi_recv_buf[100];
-        int mpi_res;
-        MPI_Status mpi_recv_status;
-        printf("memcached/memcached.c MPI_Recv() start\n");
-        memset(c->rbuf, 0, avail);
-        printf("\t sizeof c->rbuf : %d\n", avail);
-        printf("\t before MPI_Recv c->rbuf : %s\n", c->rbuf);
-        MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        //MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
-        // 일단 이렇게 구현해보자
-        printf("memcached/memcached.c recv buf : %s | 송신 rank : %d\n", c->rbuf, mpi_recv_status.MPI_SOURCE);
-        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        #if DISABLE_MPI_FUNCTIONS
+            char mpi_recv_buf[100];
+            int mpi_res;
+            MPI_Status mpi_recv_status;
+            printf("memcached/memcached.c MPI_Recv() start\n");
+            memset(c->rbuf, 0, avail);
+            printf("\t sizeof c->rbuf : %d\n", avail);
+            printf("\t before MPI_Recv c->rbuf : %s\n", c->rbuf);
+            MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+            //MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+            //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
+            // 일단 이렇게 구현해보자
+            printf("memcached/memcached.c recv buf : %s | 송신 rank : %d\n", c->rbuf, mpi_recv_status.MPI_SOURCE);
+            MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
 
 
-        for(int i=0; i<res; i++){
-            printf("\t %d : %c\n",i, c->rbuf[i]);
-        }
+            for(int i=0; i<res; i++){
+                printf("\t %d : %c\n",i, c->rbuf[i]);
+            }
+        #endif
         printf("********************************************************\n");
-
         /************************yedam code end**********************/
 
         if (res > 0) {
@@ -3351,6 +3418,7 @@ static void drive_machine(conn *c) {
                     break;
                 }
                 res = try_read_network(c); //여기 들어감
+                printf("memcached/memcached.c :: drive_machine - conn_read res : %d\n", res);
             } else {
                 // UDP connections always have a static buffer.
                 res = try_read_udp(c);
@@ -5150,15 +5218,24 @@ int main (int argc, char **argv) {
     char *subopts_value;
 
     //yedam
-    int rank;
-    int size;
-    char processor_name[MPI_MAX_PROCESSOR_NAME];
-    int name_len;
+        int rank;
+        int size;
+        //char processor_name[MPI_MAX_PROCESSOR_NAME];
+        //int name_len;
 
-    MPI_Init(&argc, &argv); // 초기화
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
-    MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
-    MPI_Get_processor_name(processor_name, &name_len);
+        MPI_Init(&argc, &argv); // 초기화
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
+        MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
+    #if DISABLE_MPI_FUNCTIONS
+        mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size);
+
+        mpi_conn_init(mpi_conn_arr);
+
+        mpi_conn_arr[1].rank = 1;
+        mpi_conn_arr[1].state = conn_read;
+        //MPI_Get_processor_name(processor_name, &name_len);
+
+    #endif
     printf("memcached/memcached.c :: main()-[2]\n");
     enum {
         MAXCONNS_FAST = 0,
@@ -6593,6 +6670,8 @@ int main (int argc, char **argv) {
 
         errno = 0;
         printf("memcached/memcached.c :: main()-[19], server_sockets call, port : %d, tcp_transport : %d\n", settings.port, tcp_transport);
+
+        #if DISABLE_SOCKET_FUNCTIONS
         if (settings.port && server_sockets(settings.port, tcp_transport, portnumber_file)) {
             //printf("memcached/memcached.c :: main()-[19]-1\n");
             if (settings.inter == NULL) {
@@ -6603,6 +6682,8 @@ int main (int argc, char **argv) {
             free(temp_portnumber_filename);
             exit(EX_OSERR);
         }
+        #endif
+
         /***************************************0711 여기부터 다시***************************************** */
         /*
          * initialization order: first create the listening sockets
@@ -6666,11 +6747,25 @@ int main (int argc, char **argv) {
     /* enter the event loop */
     MPI_Barrier(MPI_COMM_WORLD);
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
-        printf("memcached/memcached.c :: main() main loop\n");
+        #if DISABLE_SOCKET_FUNCTIONS
         if (event_base_loop(main_base, EVLOOP_ONCE) != 0) { //얘는 한번만 발생하는 루프
             retval = EXIT_FAILURE;
             break;
         }
+        #endif
+
+        #if DISABLE_MPI_FUNCTIONS
+            waiting_recv(); //5s 잠시 잠들기..
+            mpi_drive_machine(mpi_conn_arr);
+
+            // char mpi_recv_buf[100];
+            // int mpi_res;
+            // MPI_Status mpi_recv_status;
+            // //memset(mpi_recv_buf, 0, avail);
+            // printf("MPI_Recv in main loop \n");
+            // MPI_Recv(mpi_recv_buf, 100, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+            // printf("memcached/memcached.c recv buf : %s | 송신 rank : %d\n", mpi_recv_buf, mpi_recv_status.MPI_SOURCE);
+        #endif
     }
 
     printf("memcached/memcached.c :: main()-[14]-11\n");

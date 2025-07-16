@@ -251,7 +251,6 @@ static void *assoc_maintenance_thread(void *arg) {
 
         /* There is only one expansion thread, so no need to global lock. */
         for (ii = 0; ii < hash_bulk_move && expanding; ++ii) {
-            printf("\t assoc_maintenance_thread() - ii : %d\n", ii);
             item *it, *next;
             uint64_t bucket;
             void *item_lock = NULL;
