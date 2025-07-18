@@ -16,6 +16,7 @@ int cache_error = 0;
 #endif
 
 cache_t* cache_create(const char *name, size_t bufsize, size_t align) {
+    printf("memcached/cache.c :: cache_create()\n");
     cache_t* ret = calloc(1, sizeof(cache_t));
     char* nm = strdup(name);
     if (ret == NULL || nm == NULL ||
@@ -65,6 +66,7 @@ void cache_destroy(cache_t *cache) {
 }
 
 void* cache_alloc(cache_t *cache) {
+    printf("memcached/cache.c :: cache_alloc()\n");
     void *ret;
     pthread_mutex_lock(&cache->mutex);
     ret = do_cache_alloc(cache);
@@ -73,14 +75,19 @@ void* cache_alloc(cache_t *cache) {
 }
 
 void* do_cache_alloc(cache_t *cache) {
+    printf("memcached/cache.c :: do_cache_alloc()\n");
     void *ret;
     void *object;
+    printf("memcached/cache.c :: do_cache_alloc()1\n");
     if (cache->freecurr > 0) {
+        printf("memcached/cache.c :: do_cache_alloc()2\n");
         ret = STAILQ_FIRST(&cache->head);
         STAILQ_REMOVE_HEAD(&cache->head, c_next);
         object = get_object(ret);
         cache->freecurr--;
-    } else if (cache->limit == 0 || cache->total < cache->limit) {
+    } else if (cache->limit == 0 || cache->total < cache->limit) { //여기
+         printf("memcached/cache.c :: do_cache_alloc()3\n");
+         printf("memcached/cache.c :: do_cache_alloc(), cache->limit : %d | cache->total : %d |\n", cache->limit, cache->total);
         object = ret = malloc(cache->bufsize);
         if (ret != NULL) {
             object = get_object(ret);
@@ -88,11 +95,13 @@ void* do_cache_alloc(cache_t *cache) {
             cache->total++;
         }
     } else {
+         printf("memcached/cache.c :: do_cache_alloc()4\n");
         object = NULL;
     }
 
 #ifndef NDEBUG
     if (object != NULL) {
+         printf("memcached/cache.c :: do_cache_alloc()5\n");
         /* add a simple form of buffer-check */
         uint64_t *pre = ret;
         *pre = redzone_pattern;
@@ -100,8 +109,8 @@ void* do_cache_alloc(cache_t *cache) {
         memcpy(((char*)ret) + cache->bufsize - (2 * sizeof(redzone_pattern)),
                &redzone_pattern, sizeof(redzone_pattern));
     }
-#endif
-
+#endif  
+     printf("memcached/cache.c :: do_cache_alloc()6\n"); //여기
     return object;
 }
 

@@ -250,6 +250,7 @@ static void _storage_get_item_cb(void *e, obj_io *io, int ret) {
 }
 
 int storage_get_item(conn *c, item *it, mc_resp *resp) {
+    printf("memcached/storage.c :: storage_get_item()\n");
 #ifdef NEED_ALIGN
     item_hdr hdr;
     memcpy(&hdr, ITEM_data(it), sizeof(hdr));
@@ -275,7 +276,7 @@ int storage_get_item(conn *c, item *it, mc_resp *resp) {
         return -1;
     // so we can free the chunk on a miss
     new_it->slabs_clsid = clsid;
-
+    
     io_pending_storage_t *p = do_cache_alloc(c->thread->io_cache);
     // this is a re-cast structure, so assert that we never outsize it.
     assert(sizeof(io_pending_t) >= sizeof(io_pending_storage_t));

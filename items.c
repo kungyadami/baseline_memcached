@@ -1009,12 +1009,15 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
         printf("[yedam] items.c :: do_item_get()\n");
     }
     item *it = assoc_find(key, nkey, hv);
+    printf("[yedam] items.c :: do_item_get() 2\n");
     if (it != NULL) {
+        printf("[yedam] items.c :: do_item_get() 3\n");
         refcount_incr(it);
     }
     int was_found = 0;
 
     if (settings.verbose > 2) {
+        printf("[yedam] items.c :: do_item_get() 4\n");
         int ii;
         if (it == NULL) {
             fprintf(stderr, "> NOT FOUND ");
@@ -1025,10 +1028,13 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             fprintf(stderr, "%c", key[ii]);
         }
     }
+    printf("[yedam] items.c :: do_item_get() 5\n");
 
     if (it != NULL) {
+        printf("[yedam] items.c :: do_item_get() 6\n");
         was_found = 1;
         if (item_is_flushed(it)) {
+            printf("[yedam] items.c :: do_item_get() 7\n");
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1041,6 +1047,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 2;
         } else if (it->exptime != 0 && it->exptime <= current_time) {
+            printf("[yedam] items.c :: do_item_get() 8\n");
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1053,19 +1060,21 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 3;
         } else {
+            printf("[yedam] items.c :: do_item_get() 9\n");
             if (do_update) {
                 do_item_bump(t, it, hv);
             }
             DEBUG_REFCNT(it, '+');
         }
     }
-
+    //printf("[yedam] items.c :: do_item_get() ?? t->l : %d\n", t->l);
     if (settings.verbose > 2)
         fprintf(stderr, "\n");
     /* For now this is in addition to the above verbose logging. */
-    LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
-               nkey, (it) ? it->nbytes : 0, (it) ? ITEM_clsid(it) : 0, t->cur_sfd);
-
+    //yedam
+    // LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
+    //            nkey, (it) ? it->nbytes : 0, (it) ? ITEM_clsid(it) : 0, t->cur_sfd);
+    printf("[yedam] items.c :: do_item_get() 10\n");
     return it;
 }
 

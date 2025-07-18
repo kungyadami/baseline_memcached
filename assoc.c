@@ -104,16 +104,21 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
             printf("[yedam] assoc.c :: assoc_find(), not expanding\n");
         }
         it = primary_hashtable[hv & hashmask(hashpower)];
+
+        if (settings.verbose) {
+            printf("[yedam] assoc.c :: assoc_find(), not expanding 2\n");
+        }
     }
 
+    if (settings.verbose) {
+        printf("[yedam] assoc.c :: assoc_find(), not expanding 3\n");
+    }
     item *ret = NULL;
 #ifdef ENABLE_DTRACE
-    if (settings.verbose) {
-        printf("[yedam] assoc.c :: assoc_find(), enable dtrace flag is true\n");
-    }
     int depth = 0;
 #endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
+        printf("[yedam] assoc.c :: assoc_find(), while 1\n");
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             if (settings.verbose) {
                 printf("[yedam] assoc.c :: assoc_find(), key found successfully\n");
@@ -128,7 +133,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
     //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
-    //printf("[yedam] assoc.c :: assoc_find() - key : %s\n", ITEM_key(it));
+    printf("[yedam] assoc.c :: assoc_find() return \n");
     return ret;
 }
 

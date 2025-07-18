@@ -139,6 +139,7 @@ static void _storage_get_item_cb(void *e, obj_io *eio, int ret) {
 // directly into there? item only necessary for recache.
 static int proxy_storage_get(LIBEVENT_THREAD *t, item *it, mc_resp *resp,
         int type) {
+    printf("memcached/proxy_internal.c :: proxy_storage_get()\n");
 #ifdef NEED_ALIGN
     item_hdr hdr;
     memcpy(&hdr, ITEM_data(it), sizeof(hdr));

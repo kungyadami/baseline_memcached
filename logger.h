@@ -231,10 +231,13 @@ logger *logger_create(void);
 
 #define LOGGER_LOG(l, flag, type, ...) \
     do { \
+        printf("[DEBUG] Logging in LOGGER_LOG 0\n"); \
         logger *myl = l; \
         if (l == NULL) \
+            printf("[DEBUG] Logging in LOGGER_LOG 1\n"); \
             myl = GET_LOGGER(); \
         if (myl->eflags & flag) \
+            printf("[DEBUG] Logging in LOGGER_LOG 2\n"); \
             logger_log(myl, type, __VA_ARGS__); \
     } while (0)
 

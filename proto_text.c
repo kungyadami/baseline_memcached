@@ -172,11 +172,13 @@ void complete_nread_ascii(conn *c) {
     c->thread->stats.slab_stats[ITEM_clsid(it)].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
-    if ((it->it_flags & ITEM_CHUNKED) == 0) {
+    if ((it->it_flags & ITEM_CHUNKED) == 0) { //여기 들어감
+        printf("memcached/proto_text.c :: complete_nread_ascii 2\n");
         if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) == 0) {
             is_valid = true;
         }
     } else {
+        printf("memcached/proto_text.c :: complete_nread_ascii 3\n");
         char buf[2];
         /* should point to the final item chunk */
         item_chunk *ch = (item_chunk *) c->ritem;
@@ -185,36 +187,42 @@ void complete_nread_ascii(conn *c) {
          * chunks.
          */
         if (ch->used > 1) {
+            printf("memcached/proto_text.c :: complete_nread_ascii 4\n");
             buf[0] = ch->data[ch->used - 2];
             buf[1] = ch->data[ch->used - 1];
         } else {
+            printf("memcached/proto_text.c :: complete_nread_ascii 5\n");
             assert(ch->prev);
             assert(ch->used == 1);
             buf[0] = ch->prev->data[ch->prev->used - 1];
             buf[1] = ch->data[ch->used - 1];
         }
         if (strncmp(buf, "\r\n", 2) == 0) {
+            printf("memcached/proto_text.c :: complete_nread_ascii 6\n");
             is_valid = true;
         } else {
+            printf("memcached/proto_text.c :: complete_nread_ascii 7\n");
             assert(1 == 0);
         }
     }
 
     if (!is_valid) {
+        printf("memcached/proto_text.c :: complete_nread_ascii 8\n");
         // metaset mode always returns errors.
         if (c->mset_res) {
             c->noreply = false;
         }
         out_string(c, "CLIENT_ERROR bad data chunk");
-    } else {
+    } else { //여기 들어감!
+      printf("memcached/proto_text.c :: complete_nread_ascii 9\n");
       uint64_t cas = 0;
       c->thread->cur_sfd = c->sfd; // cuddle sfd for logging.
-      //printf("memcached/- proto_text.c :: complete_nread_ascii(), store_item call\n");
       ret = store_item(it, comm, c->thread, &nbytes, &cas, c->cas ? c->cas : get_cas_id(), c->set_stale);
       c->cas = 0;
 
 #ifdef ENABLE_DTRACE
       switch (c->cmd) {
+        printf("memcached/proto_text.c :: complete_nread_ascii 10\n");
       case NREAD_ADD:
           MEMCACHED_COMMAND_ADD(c->sfd, ITEM_key(it), it->nkey,
                                 (ret == 1) ? it->nbytes : -1, cas);
@@ -243,9 +251,11 @@ void complete_nread_ascii(conn *c) {
 #endif
 
       if (c->mset_res) {
+        printf("memcached/proto_text.c :: complete_nread_ascii 11\n");
           _finalize_mset(c, nbytes, ret, cas);
       } else {
           switch (ret) {
+            printf("memcached/proto_text.c :: complete_nread_ascii 12\n");
           case STORED:
             if (settings.verbose) {
               printf("memcached/- proto_text.c :: complete_nread_ascii(), STORED\n");
@@ -558,14 +568,13 @@ int try_read_command_ascii(conn *c) {
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time;
-    if (settings.verbose) {
-        printf("memcached/proto_text.c :: try_read_command_ascii()3\n");
-    }
     //여기서 process_command_ascii로 들어가고, 거기서 get command ... 등등
-    printf("memcached/proto_text.c :: try_read_command_ascii() rcurr : %s\n", c->rcurr);
+    //printf("memcached/proto_text.c :: try_read_command_ascii() rcurr : %s\n", c->rcurr);
     process_command_ascii(c, c->rcurr);
     printf("memcached/proto_text.c :: try_read_command_ascii() 4\n");
     c->rbytes -= (cont - c->rcurr);
+        printf("memcached/proto_text.c :: mpi_try_read_command_ascii() rcurr : %s\n", c->rcurr);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() cont : %s\n", cont);
     c->rcurr = cont;
     printf("memcached/proto_text.c :: try_read_command_ascii() 5, c->rbytes : %d\n", c->rbytes);
 
@@ -3260,9 +3269,108 @@ void process_command_ascii(conn *c, char *command) {
 
 #if DISABLE_MPI_FUNCTIONS
 
+void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
+    printf("memcached/proto_text.c :: mpi_complete_nread_ascii\n");
+    assert(c != NULL);
+
+    item *it = c->item; //item은 저장할 데이터들을 뜻한다.
+    int comm = c->cmd; //이 C에 저장된 현재 연산 명령어를 comm으로 대입(cmd 에 set을 뜻하는 숫자가 들어있는듯)
+    enum store_item_type ret;
+    bool is_valid = false;
+    int nbytes = 0;
+
+    //set 명령어를 처리한 횟수를 올려주는 코드, 근데 event library가 들어있어 이걸 사용하긴 어려울듯하다.
+    // pthread_mutex_lock(&c->thread->stats.mutex);
+    // c->thread->stats.slab_stats[ITEM_clsid(it)].set_cmds++;
+    // pthread_mutex_unlock(&c->thread->stats.mutex);
+
+    if ((it->it_flags & ITEM_CHUNKED) == 0) {
+        if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) == 0) {
+            is_valid = true;
+        }
+    } else {
+        char buf[2];
+        /* should point to the final item chunk */
+        item_chunk *ch = (item_chunk *) c->ritem; //value는 ritem 여기에 저장되어있다고 한다.
+        assert(ch->used != 0);
+        /* :( We need to look at the last two bytes. This could span two
+         * chunks.
+         */
+        if (ch->used > 1) {
+            buf[0] = ch->data[ch->used - 2];
+            buf[1] = ch->data[ch->used - 1];
+        } else {
+            assert(ch->prev);
+            assert(ch->used == 1);
+            buf[0] = ch->prev->data[ch->prev->used - 1];
+            buf[1] = ch->data[ch->used - 1];
+        }
+        if (strncmp(buf, "\r\n", 2) == 0) {
+            is_valid = true;
+        } else {
+            assert(1 == 0);
+        }
+    }
+
+    if (!is_valid) {
+        // metaset mode always returns errors.
+        if (c->mset_res) {
+            c->noreply = false;
+        }
+        out_string(c, "CLIENT_ERROR bad data chunk");
+    } else {
+      uint64_t cas = 0;
+      //c->thread->cur_sfd = c->sfd; // cuddle sfd for logging.
+      //printf("memcached/- proto_text.c :: complete_nread_ascii(), store_item call\n");
+      ret = store_item(it, comm, c->thread, &nbytes, &cas, c->cas ? c->cas : get_cas_id(), c->set_stale);
+      c->cas = 0;
+
+      if (c->mset_res) {
+          _finalize_mset(c, nbytes, ret, cas);
+      } else {
+          switch (ret) {
+          case STORED:
+            if (settings.verbose) {
+              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), STORED\n");
+            }
+              mpi_out_string(c, "STORED"); //여기서 최종 STORED를 내뱉는듯??
+
+              break;
+          case EXISTS:
+            if (settings.verbose) {
+              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), EXISTS\n");
+            }
+              mpi_out_string(c, "EXISTS");
+              break;
+          case NOT_FOUND:
+            if (settings.verbose) {
+              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), NOT_FOUND\n");
+            }
+              mpi_out_string(c, "NOT_FOUND");
+              break;
+          case NOT_STORED:
+            if (settings.verbose) {
+              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), NOT_STORED\n");
+            }
+              mpi_out_string(c, "NOT_STORED");
+              break;
+          default:
+              mpi_out_string(c, "SERVER_ERROR Unhandled storage type.");
+          }
+      }
+
+    }
+    printf("memcached/memcached.c :: mpi_complete_nread_ascii() return?\n");
+    c->set_stale = false; /* force flag to be off just in case */
+    c->mset_res = false;
+    item_remove(c->item);       /* release the c->item reference */
+    c->item = 0;
+}
+
+
 
 void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
-    printf("memcached/proto_text.c :: process_command_ascii()\n");
+    printf("memcached/proto_text.c :: mpi_process_command_ascii()\n");
 
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
@@ -3270,6 +3378,12 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
 
     assert(c != NULL);
 
+    if (!mpi_resp_start(c)) {
+        c->state = conn_closing;
+        return;
+    }
+
+    c->thread->cur_sfd = c->rank; // cuddle sfd for logging.
     ntokens = tokenize_command(command, tokens, MAX_TOKENS);
     // All commands need a minimum of two tokens: cmd and NULL finalizer
     // There are also no valid commands shorter than two bytes.
@@ -3311,6 +3425,7 @@ static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *token
 
 
 void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
+    printf("memcached/proto_text.c :: mpi_process_update_command()\n");
     char *key;
     size_t nkey;
     client_flags_t flags;
@@ -3332,12 +3447,12 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
 
-    // if (! (safe_strtoflags(tokens[2].value, &flags) //error
-    //        && safe_strtol(tokens[3].value, &exptime_int)
-    //        && safe_strtol(tokens[4].value, (int32_t *)&vlen))) {
-    //     out_string(c, "CLIENT_ERROR bad command line format");
-    //     return;
-    // }
+    if (! (safe_strtoflags(tokens[2].value, &flags) //error
+           && safe_strtol(tokens[3].value, &exptime_int)
+           && safe_strtol(tokens[4].value, (int32_t *)&vlen))) {
+        out_string(c, "CLIENT_ERROR bad command line format");
+        return;
+    }
 
     exptime = realtime(EXPTIME_TO_POSITIVE_TIME(exptime_int));
 
@@ -3432,18 +3547,23 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c) {
     printf("memcached/proto_text.c :: mpi_try_read_command_ascii() el : %s\n", el);
 
     cont = el + 1;
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() cont : %s\n", cont);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() el : %s\n", el);
     if ((el - c->rcurr) > 1 && *(el - 1) == '\r') {
         el--;
+        printf("memcached/proto_text.c :: mpi_try_read_command_ascii() el--\n");
     }
     *el = '\0';
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() el : %s\n", el);
 
     //assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time; //시간 업데이트하기
-
     mpi_process_command_ascii(c, c->rcurr);
     printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 4\n");
     c->rbytes -= (cont - c->rcurr);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() rcurr : %s\n", c->rcurr);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() cont : %s\n", cont);
     c->rcurr = cont;
     printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 5, c->rbytes : %d\n", c->rbytes);
 

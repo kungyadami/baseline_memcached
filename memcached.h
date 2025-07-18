@@ -368,56 +368,6 @@ struct slab_stats {
     X(proxy_req_active)
 #endif
 
-#if DISABLE_MPI_FUNCTIONS
-struct mpi_conn_info{
-    int  rank;
-    enum conn_states  state;
-    enum bin_substates substate;
-
-    char   *rbuf;   /** buffer to read commands into */
-    char   *rcurr;  /** but if we parsed some already, this is where we stopped */
-    int    rsize;   /** total allocated size of rbuf */
-    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
-
-    char   *ritem;  /** when we read in an item's value, it goes here */
-    int    rlbytes;
-
-    rel_time_t last_cmd_time;
-    bool   noreply;   /* True if the reply should not be sent. */
-
-    /**
-     * item is used to hold an item structure created after reading the command
-     * line of set/add/replace commands, but before we finished reading the actual
-     * data. The data is read into ITEM_data(item) to avoid extra copying.
-     */
-
-    void   *item;     /* for commands set/add/replace  */
-
-    /* data for the swallow state */
-    int    sbytes;    /* how many bytes to swallow */
-
-    int resps_suspended; /* see notes on io_queue_cb_t */
-
-    enum protocol protocol;   /* which protocol this connection speaks */
-    enum network_transport transport; /* what transport is used by this connection */
-    enum close_reasons close_reason; /* reason for transition into conn_closing */
-
-    /* current stats command */
-    struct {
-        char *buffer;
-        size_t size;
-        size_t offset;
-    } stats;
-
-    uint64_t cas; /* the cas to return */
-    uint64_t tag; /* listener stocket tag */
-    short cmd; /* current command being processed */
-    int opaque;
-    int keylen;
-
-};
-
-#endif
 
 
 
@@ -970,6 +920,70 @@ struct conn {
     ssize_t (*sendmsg)(conn *c, struct msghdr *msg, int flags);
     ssize_t (*write)(conn *c, void *buf, size_t count);
 };
+
+
+
+#if DISABLE_MPI_FUNCTIONS
+struct mpi_conn_info{
+
+    //추가해야할 것 : set_stale, mset_res ...
+
+    int  rank;
+    enum conn_states  state;
+    enum bin_substates substate;
+    bool set_stale;
+    bool mset_res; /** uses mset format for return code */
+    bool item_malloced; /** item for conn_nread state is a temporary malloc */
+
+    char   *rbuf;   /** buffer to read commands into */
+    char   *rcurr;  /** but if we parsed some already, this is where we stopped */
+    int    rsize;   /** total allocated size of rbuf */
+    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
+
+    char   *ritem;  /** when we read in an item's value, it goes here */
+    int    rlbytes;
+
+    rel_time_t last_cmd_time;
+    bool   noreply;   /* True if the reply should not be sent. */
+
+    /**
+     * item is used to hold an item structure created after reading the command
+     * line of set/add/replace commands, but before we finished reading the actual
+     * data. The data is read into ITEM_data(item) to avoid extra copying.
+     */
+
+    void   *item;     /* for commands set/add/replace  */
+
+    /* data for the swallow state */
+    int    sbytes;    /* how many bytes to swallow */
+
+    int resps_suspended; /* see notes on io_queue_cb_t */
+
+    enum protocol protocol;   /* which protocol this connection speaks */
+    enum network_transport transport; /* what transport is used by this connection */
+    enum close_reasons close_reason; /* reason for transition into conn_closing */
+    mc_resp *resp; // tail response.
+    mc_resp *resp_head; // first response in current stack.
+    /* current stats command */
+    struct {
+        char *buffer;
+        size_t size;
+        size_t offset;
+    } stats;
+
+    LIBEVENT_THREAD *thread;
+
+    uint64_t cas; /* the cas to return */
+    uint64_t tag; /* listener stocket tag */
+    short cmd; /* current command being processed */
+    int opaque;
+    int keylen;
+
+};
+
+#endif
+
+
 
 /* array of conn structures, indexed by file descriptor */
 extern conn **conns;
