@@ -314,7 +314,9 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
             it->it_flags |= ITEM_CHUNKED;
     } else {
         printf("memcached/item.c :: do_item_alloc() - [4]\n");
+        printf("\t ntotal : %d | id : %d\n", ntotal, id);
         it = do_item_alloc_pull(ntotal, id);
+        printf("memcached/item.c :: do_item_alloc() - [5]\n");
     }
 
     if (it == NULL) {
