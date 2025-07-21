@@ -286,11 +286,12 @@ void complete_nread_ascii(conn *c) {
       }
 
     }
-
+    printf("memcached/memcached.c :: complete_nread_ascii() return?\n");
     c->set_stale = false; /* force flag to be off just in case */
     c->mset_res = false;
     item_remove(c->item);       /* release the c->item reference */
     c->item = 0;
+    printf("여기를 들어가지 않아??\n");
 }
 
 #define COMMAND_TOKEN 0
@@ -573,8 +574,8 @@ int try_read_command_ascii(conn *c) {
     process_command_ascii(c, c->rcurr);
     printf("memcached/proto_text.c :: try_read_command_ascii() 4\n");
     c->rbytes -= (cont - c->rcurr);
-        printf("memcached/proto_text.c :: mpi_try_read_command_ascii() rcurr : %s\n", c->rcurr);
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() cont : %s\n", cont);
+        printf("memcached/proto_text.c :: try_read_command_ascii() rcurr : %s\n", c->rcurr);
+    printf("memcached/proto_text.c :: try_read_command_ascii() cont : %s\n", cont);
     c->rcurr = cont;
     printf("memcached/proto_text.c :: try_read_command_ascii() 5, c->rbytes : %d\n", c->rbytes);
 
@@ -2200,7 +2201,8 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         return;
     }
     ITEM_set_cas(it, req_cas_id);
-    printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
+    printf("memcached/- proto_text.c :: process_update_command()-[7], c->sfd : %d\n", c->sfd);
+
     c->item = it;
 #ifdef NEED_ALIGN
     if (it->it_flags & ITEM_CHUNKED) {
@@ -2213,7 +2215,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
 #endif
     c->rlbytes = it->nbytes;
     c->cmd = comm;
-    //printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
+    printf("memcached/- proto_text.c :: process_update_command()-[8]\n");
     conn_set_state(c, conn_nread);
 }
 
@@ -3365,6 +3367,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
     c->mset_res = false;
     item_remove(c->item);       /* release the c->item reference */
     c->item = 0;
+    printf("여기를 들어가지 않아??\n");
 }
 
 
@@ -3432,6 +3435,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     int32_t exptime_int = 0;
     rel_time_t exptime = 0;
     int vlen;
+    printf("memcached/proto_text.c :: process_update_command()-[2], vlen : %d\n", vlen);
     uint64_t req_cas_id=0;
     item *it;
 
@@ -3453,9 +3457,9 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
         out_string(c, "CLIENT_ERROR bad command line format");
         return;
     }
-
+    printf("memcached/proto_text.c :: process_update_command()-[3], vlen : %d\n", vlen);
     exptime = realtime(EXPTIME_TO_POSITIVE_TIME(exptime_int));
-
+    printf("memcached/proto_text.c :: process_update_command()-[4], exptime : %u\n", exptime);
     //// does cas value exist?
     // if (handle_cas) { //error
     //     if (!safe_strtoull(tokens[5].value, &req_cas_id)) {
@@ -3470,7 +3474,9 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     // }
     vlen += 2;
     //여기서 다시
+    printf("memcached/- proto_text.c :: process_update_command()-[5]\n");
     if (settings.detail_enabled) {
+        printf("memcached/- proto_text.c :: process_update_command()-[5-1]\n");
         stats_prefix_record_set(key, nkey);
     }
 
@@ -3515,8 +3521,8 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     //     return;
     // }
     ITEM_set_cas(it, req_cas_id);
-    //printf("memcached/- proto_text.c :: process_update_command()-[6]\n");
-    c->item = it;
+   printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
+    c->item = it; //여기부분에서 저장되는듯
 #ifdef NEED_ALIGN
     if (it->it_flags & ITEM_CHUNKED) {
         c->ritem = ITEM_schunk(it);
@@ -3528,7 +3534,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 #endif
     c->rlbytes = it->nbytes;
     c->cmd = comm;
-    //printf("memcached/- proto_text.c :: process_update_command()-[7]\n");
+    printf("memcached/- proto_text.c :: process_update_command()-[8]\n");
     //conn_set_state(c, conn_nread);
     c->state = conn_nread;
 }

@@ -933,6 +933,7 @@ struct mpi_conn_info{
     enum bin_substates substate;
     bool set_stale;
     bool mset_res; /** uses mset format for return code */
+    bool close_after_write; /** flush write then move to close connection */
     bool rbuf_malloced; /** read buffer was malloc'ed for ascii mget, needs free() */
     bool item_malloced; /** item for conn_nread state is a temporary malloc */
 

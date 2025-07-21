@@ -540,6 +540,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 }
 
 void do_item_unlink(item *it, const uint32_t hv) {
+    printf("memcached/items.c :: do_item_unlink()\n");
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -556,6 +557,7 @@ void do_item_unlink(item *it, const uint32_t hv) {
 
 /* FIXME: Is it necessary to keep this copy/pasted code? */
 void do_item_unlink_nolock(item *it, const uint32_t hv) {
+    printf("memcached/items.c :: do_item_unlink_nolock()\n");
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -620,6 +622,7 @@ int do_item_replace(item *it, item *new_it, const uint32_t hv, const uint64_t ca
 }
 
 void item_flush_expired(void) {
+    printf("memcached/item.c :: item_flush_expired() \n");
     int i;
     item *iter, *next;
     if (settings.oldest_live == 0)
@@ -1127,6 +1130,7 @@ item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
 int lru_pull_tail(const int orig_id, const int cur_lru,
         const uint64_t total_bytes, const uint8_t flags, const rel_time_t max_age,
         struct lru_pull_tail_return *ret_it) {
+    //printf("memcached/item.c :: lru_pull_tail()\n");
     item *it = NULL;
     int id = orig_id;
     int removed = 0;
@@ -1419,6 +1423,7 @@ static uint64_t lru_total_bumps_dropped(void) {
  * autoadjust in the future.
  */
 static int lru_maintainer_juggle(const int slabs_clsid) {
+    //printf("memcached/item.c :: lru_maintainer_juggle()\n");
     int i;
     int did_moves = 0;
     uint64_t total_bytes = 0;
@@ -1595,6 +1600,7 @@ static pthread_t lru_maintainer_tid;
 #define MIN_LRU_MAINTAINER_SLEEP 1000
 
 static void *lru_maintainer_thread(void *arg) {
+    printf("memcached/item.c :: lru_maintainer_thread()\n");
     int i;
     useconds_t to_sleep = MIN_LRU_MAINTAINER_SLEEP;
     useconds_t last_sleep = MIN_LRU_MAINTAINER_SLEEP;
@@ -1641,7 +1647,6 @@ static void *lru_maintainer_thread(void *arg) {
                     to_sleep = next_juggles[i];
                 continue;
             }
-
             int did_moves = lru_maintainer_juggle(i);
             if (did_moves == 0) {
                 if (backoff_juggles[i] != 0) {

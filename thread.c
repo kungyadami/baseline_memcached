@@ -1260,7 +1260,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
                        int read_buffer_size, enum network_transport transport,
                        uint64_t conntag, enum protocol bproto) {
     if (settings.verbose) {
-        printf("[yedam] thread.c :: mpi_dispatch_conn_new()\n");
+        printf("[yedam] thread.c :: mpi_dispatch_conn_new(), c->item : %p\n", c->item);
     }
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
@@ -1271,6 +1271,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
     //     thread = select_thread_by_napi_id(sfd);
 
     item = cqi_new(thread->ev_queue);
+    printf("\t mpi_dispatch_conn_new - item : %p\n", item);
     if (item == NULL) {
         //close(sfd);
         /* given that malloc failed this may also fail, but let's try */
@@ -1310,8 +1311,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
         printf("\t open_bundle : %d\n", thread->open_bundle);
         printf("\t io_cache : %d\n", thread->io_cache);
 
-        printf("\t l : %d\n", thread->l);
-        printf("\t napi_id : %d\n", thread->napi_id);
+        printf("\t item : %p\n", c->item);
     }
 }
 

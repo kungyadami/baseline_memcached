@@ -501,7 +501,7 @@ static void storage_finalize_cb(io_pending_t *pending) {
 static int storage_write(void *storage, const int clsid, const int item_age) {
     int did_moves = 0;
     struct lru_pull_tail_return it_info;
-
+    printf("memcached/storage.c :: lru_pull_tail()\n");
     it_info.it = NULL;
     lru_pull_tail(clsid, COLD_LRU, 0, LRU_PULL_RETURN_ITEM, 0, &it_info);
     /* Item is locked, and we have a reference to it. */

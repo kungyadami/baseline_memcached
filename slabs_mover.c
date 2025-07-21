@@ -155,6 +155,7 @@ static void *slab_rebalance_alloc(struct slab_rebal_thread *t, unsigned int id) 
 
 // To call move, we first need a free chunk of memory.
 static void slab_rebalance_prep(struct slab_rebal_thread *t) {
+    printf("memcached/slabs_mover.c :: slab_rebalance_prep() \n");
     unsigned int s_clsid = t->rebal.s_clsid;
     if (t->new_it) {
         // move didn't use the memory from the last loop.
