@@ -1,1 +1,2 @@
 - memcached.c -> mpi_conn_init()
+- memcached.c -> implement get operation

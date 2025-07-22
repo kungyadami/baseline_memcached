@@ -55,8 +55,8 @@
 
 #include <mpi.h>
 
-#define DISABLE_SOCKET_FUNCTIONS 0
-#define DISABLE_MPI_FUNCTIONS 1
+#define ENABLE_SOCKET_FUNCTIONS 0
+#define ENABLE_MPI_FUNCTIONS 1
 
 #ifdef EXTSTORE
 #include "crc32c.h"
@@ -923,26 +923,23 @@ struct conn {
 
 
 
-#if DISABLE_MPI_FUNCTIONS
+#if ENABLE_MPI_FUNCTIONS
 struct mpi_conn_info{
-
-    //추가해야할 것 : set_stale, mset_res ...
-
-    int  rank;
+    int  rank;      /** MPI Rank */
     enum conn_states  state;
     enum bin_substates substate;
+    bool close_after_write; /** write 한 이후에 연결 종료할 지? */
+    bool rbuf_malloced; /** read buffer was malloc'ed for ascii mget, needs free() */
+    bool item_malloced; /** conn_nread 상태일 때 키와 value를 저장할 item이 일정 시간 할당된 상태를 뜻함*/
     bool set_stale;
     bool mset_res; /** uses mset format for return code */
-    bool close_after_write; /** flush write then move to close connection */
-    bool rbuf_malloced; /** read buffer was malloc'ed for ascii mget, needs free() */
-    bool item_malloced; /** item for conn_nread state is a temporary malloc */
 
     char   *rbuf;   /** buffer to read commands into */
-    char   *rcurr;  /** but if we parsed some already, this is where we stopped */
-    int    rsize;   /** total allocated size of rbuf */
-    int    rbytes;  /** how much data, starting from rcur, do we have unparsed */
+    char   *rcurr;  /** 아직 파싱되지 않은 위치, but if we parsed some already, this is where we stopped */
+    int    rsize;   /** rbuf 의 총 할당 크기, total allocated size of rbuf */
+    int    rbytes;  /** rcur 부터 시작해서 우리가 파싱하지 못한 위치까지의 데이터 길이, how much data, starting from rcur, do we have unparsed */
 
-    char   *ritem;  /** when we read in an item's value, it goes here */
+    char   *ritem;  /** value 저장하는 곳, when we read in an item's value, it goes here */
     int    rlbytes;
 
     rel_time_t last_cmd_time;

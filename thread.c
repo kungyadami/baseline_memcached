@@ -441,11 +441,11 @@ static void setup_thread(LIBEVENT_THREAD *me) {
     }
 
     /* Listen for notifications from other threads */
-#if DISABLE_SOCKET_FUNCTIONS
+#if ENABLE_SOCKET_FUNCTIONS
     setup_thread_notify(me, &me->n, thread_libevent_process);
     setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
-#if DISABLE_MPI_FUNCTIONS
+#if ENABLE_MPI_FUNCTIONS
     // setup_thread_notify(me, &me->n, thread_libevent_process);
     // setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
@@ -1249,7 +1249,7 @@ void memcached_thread_init(int nthreads, void *arg) {
 }
 
 
-#if DISABLE_MPI_FUNCTIONS
+#if ENABLE_MPI_FUNCTIONS
 
 /*
  * Dispatches a new connection to another thread. This is only ever called
