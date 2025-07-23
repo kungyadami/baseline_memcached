@@ -115,9 +115,13 @@ void set_cas_id(uint64_t new_cas) {
 }
 
 int item_is_flushed(item *it) {
+    //printf("memcached/items.c :: item_is_flushed() \n");
     rel_time_t oldest_live = settings.oldest_live;
-    if (it->time <= oldest_live && oldest_live <= current_time)
+    //printf("memcached/items.c :: item_is_flushed()  oldest_live : %d | it->time : %d | current_time : %d \n", oldest_live, it->time, current_time);
+    if (it->time <= oldest_live && oldest_live <= current_time){
+        //printf("memcached/items.c :: item_is_flushed() 1\n");
         return 1;
+    }
 
     return 0;
 }
@@ -512,11 +516,13 @@ static void item_unlink_q(item *it) {
 }
 
 int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
+    printf("memcached/items.c :: do_item_link() , it->time : %d\n", it->time);
     //여기서 insert 진행하는 것 같다
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     it->it_flags |= ITEM_LINKED;
     it->time = current_time;
+    printf("memcached/items.c :: do_item_link()2 - it->time : %d \n", it->time);
 
     STATS_LOCK();
     stats_state.curr_bytes += ITEM_ntotal(it);
@@ -526,11 +532,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, cas);
-    if (settings.verbose) {
-        if (settings.verbose) {
-            printf("[yedam] items.c :: do_item_link()\n");
-        }
-    }
+    printf("[yedam] items.c :: do_item_link()3\n");
     assoc_insert(it, hv);
     item_link_q(it);
     refcount_incr(it);
@@ -585,6 +587,7 @@ void do_item_remove(item *it) {
 /* Bump the last accessed time, or relink if we're in compat mode */
 void do_item_update(item *it) {
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
+    printf("memcached/items.c :: do_item_update()\n");
 
     /* Hits to COLD_LRU immediately move to WARM. */
     if (settings.lru_segmented) {
@@ -592,13 +595,16 @@ void do_item_update(item *it) {
         if ((it->it_flags & ITEM_LINKED) != 0) {
             if (ITEM_lruid(it) == COLD_LRU && (it->it_flags & ITEM_ACTIVE)) {
                 it->time = current_time;
+                printf("memcached/items.c :: do_item_update()2 it->time : %d\n", it->time);
                 item_unlink_q(it);
                 it->slabs_clsid = ITEM_clsid(it);
                 it->slabs_clsid |= WARM_LRU;
                 it->it_flags &= ~ITEM_ACTIVE;
                 item_link_q_warm(it);
             } else {
+                
                 it->time = current_time;
+                printf("memcached/items.c :: do_item_update()3 it->time : %d\n", it->time);
             }
         }
     } else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
@@ -606,6 +612,7 @@ void do_item_update(item *it) {
 
         if ((it->it_flags & ITEM_LINKED) != 0) {
             it->time = current_time;
+            printf("memcached/items.c :: do_item_update()4 it->time : %d\n", it->time);
             item_unlink_q(it);
             item_link_q(it);
         }
@@ -1010,9 +1017,7 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
-    if (settings.verbose) {
-        printf("[yedam] items.c :: do_item_get()\n");
-    }
+    printf("[yedam] items.c :: do_item_get()\n");
     item *it = assoc_find(key, nkey, hv);
     printf("[yedam] items.c :: do_item_get() 2\n");
     if (it != NULL) {
@@ -1064,7 +1069,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
                 fprintf(stderr, " -nuked by expire");
             }
             was_found = 3;
-        } else {
+        } else { //여기 들어감
             printf("[yedam] items.c :: do_item_get() 9\n");
             if (do_update) {
                 do_item_bump(t, it, hv);
@@ -1079,7 +1084,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     //yedam
     // LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
     //            nkey, (it) ? it->nbytes : 0, (it) ? ITEM_clsid(it) : 0, t->cur_sfd);
-    printf("[yedam] items.c :: do_item_get() 10\n");
+    printf("[yedam] items.c :: do_item_get() 10\n"); //여기에 들어감
     return it;
 }
 
@@ -1087,6 +1092,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
 // Split out of do_item_get() to allow mget functions to look through header
 // data before losing state modified via the bump function.
 void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
+    printf("memcached/items.c :: do_item_bump()\n");
     /* We update the hit markers only during fetches.
      * An item needs to be hit twice overall to be considered
      * ACTIVE, but only needs a single hit to maintain activity
@@ -1101,6 +1107,7 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
                 it->it_flags |= ITEM_ACTIVE;
                 if (ITEM_lruid(it) != COLD_LRU) {
                     it->time = current_time; // only need to bump time.
+                    printf("memcached/items.c :: do_item_bump() it->time : %d\n", it->time);
                 } else if (!lru_bump_async(t->lru_bump_buf, it, hv)) {
                     // add flag before async bump to avoid race.
                     it->it_flags &= ~ITEM_ACTIVE;

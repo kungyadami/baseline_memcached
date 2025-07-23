@@ -963,9 +963,7 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     uint32_t hv;
     hv = hash(key, nkey);
     item_lock(hv);
-    if (settings.verbose) {
-        printf("[yedam] thread.c :: item_get()\n");
-    }
+    printf("[yedam] thread.c :: item_get()\n");
     it = do_item_get(key, nkey, hv, t, do_update);
     item_unlock(hv);
     return it;

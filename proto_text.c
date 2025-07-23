@@ -643,6 +643,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     mc_resp *resp = c->resp;
 
     if (should_touch) {
+        printf("memcached/proto_text.c :: process_get_command 1\n");
         // For get and touch commands, use first token as exptime
         if (!safe_strtol(tokens[1].value, &exptime_int)) {
             out_string(c, "CLIENT_ERROR invalid exptime argument");
@@ -653,19 +654,22 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     }
 
     do {
-        while(key_token->length != 0) {
+        while(key_token->length != 0) { //여기 들어감
+            printf("memcached/proto_text.c :: process_get_command 2\n");
             bool overflow; // not used here.
             key = key_token->value;
             nkey = key_token->length;
 
             if (nkey > KEY_MAX_LENGTH) {
+                printf("memcached/proto_text.c :: process_get_command 3\n");
                 fail_length = true;
                 goto stop;
             }
-            printf("memcached/proto_text.c :: process_get_command()\n");
+            printf("memcached/proto_text.c :: process_get_command 4\n");
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
+                printf("memcached/proto_text.c :: process_get_command 5\n");
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
             if (it) {
@@ -678,6 +682,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                  */
 
                 {
+                    printf("memcached/proto_text.c :: process_get_command 6\n");
                   MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
                                         it->nbytes, ITEM_get_cas(it));
                   int nbytes = it->nbytes;
@@ -714,8 +719,8 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 }
 
                 if (settings.verbose > 1) {
+                    printf("memcached/proto_text.c :: process_get_command 7\n");
                     int ii;
-                    //printf("memcached/proto_text.c :: process_get_command()-[1]\n");
                     fprintf(stderr, ">%d sending key ", c->sfd);
                     for (ii = 0; ii < it->nkey; ++ii) {
                         fprintf(stderr, "%c", key[ii]);
@@ -726,9 +731,11 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 /* item_get() has incremented it->refcount for us */
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 if (should_touch) {
+                    printf("memcached/proto_text.c :: process_get_command 8\n");
                     c->thread->stats.touch_cmds++;
                     c->thread->stats.slab_stats[ITEM_clsid(it)].touch_hits++;
                 } else {
+                    printf("memcached/proto_text.c :: process_get_command 9\n");
                     c->thread->stats.lru_hits[it->slabs_clsid]++;
                     c->thread->stats.get_cmds++;
                 }
@@ -742,11 +749,14 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 resp->item = it;
 #endif
             } else {
+                printf("memcached/proto_text.c :: process_get_command 10\n");
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 if (should_touch) {
+                    printf("memcached/proto_text.c :: process_get_command 11\n");
                     c->thread->stats.touch_cmds++;
                     c->thread->stats.touch_misses++;
                 } else {
+                    printf("memcached/proto_text.c :: process_get_command 12\n");
                     c->thread->stats.get_misses++;
                     c->thread->stats.get_cmds++;
                 }
@@ -756,6 +766,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 
             key_token++;
             if (key_token->length != 0) {
+                printf("memcached/proto_text.c :: process_get_command 13\n");
                 if (!resp_start(c)) {
                     goto stop;
                 }
@@ -768,6 +779,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
          * of tokens.
          */
         if (key_token->value != NULL) {
+            printf("memcached/proto_text.c :: process_get_command 14\n");
             ntokens = tokenize_command(key_token->value, tokens, MAX_TOKENS);
             key_token = tokens;
             if (!resp_start(c)) {
@@ -777,7 +789,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
         }
     } while(key_token->value != NULL);
 stop:
-
+    printf("memcached/proto_text.c :: process_get_command 15\n");
     if (settings.verbose > 1)
         fprintf(stderr, ">%d END\n", c->sfd);
 
@@ -787,10 +799,12 @@ stop:
         in \r\n. So we send SERVER_ERROR instead.
     */
     if (key_token->value != NULL) {
+        printf("memcached/proto_text.c :: process_get_command 16\n");
         // Kill any stacked responses we had.
         conn_release_items(c);
         // Start a new response object for the error message.
         if (!resp_start(c)) {
+            printf("memcached/proto_text.c :: process_get_command 17\n");
             // severe out of memory error.
             conn_set_state(c, conn_closing);
             return;
@@ -801,6 +815,7 @@ stop:
             out_of_memory(c, "SERVER_ERROR out of memory writing get response");
         }
     } else {
+        printf("memcached/proto_text.c :: process_get_command 18\n");
         // Tag the end token onto the most recent response object.
         resp_add_iov(resp, "END\r\n", 5);
         conn_set_state(c, conn_new_cmd);
