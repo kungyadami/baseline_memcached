@@ -1,2 +1,3 @@
 - memcached.c -> mpi_conn_init()
 - memcached.c -> implement get operation
+- memcached.c -> implement proto_text.c :: mpi_process_update_command out_of_memory function(only mpi)

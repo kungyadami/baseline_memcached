@@ -55,8 +55,8 @@
 
 #include <mpi.h>
 
-#define ENABLE_SOCKET_FUNCTIONS 0
-#define ENABLE_MPI_FUNCTIONS 1
+#define ENABLE_SOCKET_FUNCTIONS 1
+#define ENABLE_MPI_FUNCTIONS 0
 
 #ifdef EXTSTORE
 #include "crc32c.h"

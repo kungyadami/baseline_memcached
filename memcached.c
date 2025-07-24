@@ -136,6 +136,8 @@ enum transmit_result {
 
 #if ENABLE_MPI_FUNCTIONS
 
+bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c);
+
 struct mpi_conn_info *mpi_conn_arr;
 
 void mpi_conn_release_items(struct mpi_conn_info *c);
@@ -158,8 +160,6 @@ static void mpi_rbuf_release(struct mpi_conn_info *c);
 
 static void mpi_reset_cmd_handler(struct mpi_conn_info *c);
 
-static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr);
-
 void mpi_out_string(struct mpi_conn_info *c, const char *str);
 
 static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c);
@@ -167,6 +167,10 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c);
 bool mpi_resp_start(struct mpi_conn_info *c);
 
 static void mpi_clock_handler(const evutil_socket_t fd, const short which, void *arg);
+
+static void mpi_conn_close(struct mpi_conn_info *c);
+
+static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr);
 
 
 #endif
@@ -200,42 +204,11 @@ ssize_t tcp_read(conn *c, void *buf, size_t count) {
     
 
 ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
-    if (settings.verbose) {
-        printf("memcached/memcached.c :: tcp_sendmsg()\n");
-    }
-    #if ENABLE_MPI_FUNCTIONS
-    char mpi_send_buf[1024];
-    ssize_t offset=0;
-
-    for (int i = 0; i < msg->msg_iovlen; i++) {
-        struct iovec *iov = &msg->msg_iov[i];
-        memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
-        offset +=iov->iov_len;
-    }
-
-    printf("memcached/memcached.c :: tcp_sendmsg() msg_buf : %s\n", mpi_send_buf);
-    #endif
-
+    printf("memcached/memcached.c :: tcp_sendmsg()\n");
     assert (c != NULL);
 
-    #if ENABLE_SOCKET_FUNCTIONS
-        ssize_t sent = sendmsg(c->sfd, msg, flags);
-    #endif
-
-    #if ENABLE_MPI_FUNCTIONS
-        printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송\n");
-        MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
-        printf("memcached/memcached.c :: tcp_sendmsg() MPI_Send 전송 완\n");
-        printf("\t offset : %zu\n", offset);
-    #endif
-
-    #if ENABLE_SOCKET_FUNCTIONS
+    ssize_t sent = sendmsg(c->sfd, msg, flags);
     return sent;
-    #endif
-
-    #if ENABLE_MPI_FUNCTIONS
-    return offset;
-    #endif
 }
 
 ssize_t tcp_write(conn *c, void *buf, size_t count) {
@@ -501,13 +474,13 @@ int stop_conn_timeout_thread(void) {
 static void rbuf_release(conn *c) {
     printf("memcached/memcached.c :: rbuf_release\n");
     if (c->rbuf != NULL && c->rbytes == 0 && !IS_UDP(c->transport)) {
-        printf("memcached/memcached.c :: rbuf_release [1]\n");
+        printf("memcached/memcached.c :: rbuf_release1\n");
         if (c->rbuf_malloced) {
-            printf("memcached/memcached.c :: rbuf_release [2]\n");
+            printf("memcached/memcached.c :: rbuf_release2\n");
             free(c->rbuf);
             c->rbuf_malloced = false;
         } else {
-            printf("memcached/memcached.c :: rbuf_release [3]\n");
+            printf("memcached/memcached.c :: rbuf_release3\n");
             do_cache_free(c->thread->rbuf_cache, c->rbuf);
         }
         c->rsize = 0;
@@ -518,18 +491,6 @@ static void rbuf_release(conn *c) {
 
 static bool rbuf_alloc(conn *c) {
     printf("memcached/memcached.c :: rbuf_alloc()\n");
-    printf("\t thread id : %d\n", c->thread->thread_id);
-    printf("\t base : %d\n", c->thread->base);
-    printf("\t cur_sfd : %d\n", c->thread->cur_sfd);
-    printf("\t thread_baseid : %d\n", c->thread->thread_baseid);
-    printf("\t conns_tosubmit : %d\n", c->thread->conns_tosubmit);
-    printf("\t stats : %d\n", c->thread->stats);
-    printf("\t rbuf_cache : %d\n", c->thread->rbuf_cache);
-    printf("\t open_bundle : %d\n", c->thread->open_bundle);
-    printf("\t io_cache : %d\n", c->thread->io_cache);
-
-    printf("\t l : %d\n", c->thread->l);
-    printf("\t napi_id : %d\n", c->thread->napi_id);
     if (c->rbuf == NULL) {
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
         if (!c->rbuf) {
@@ -606,10 +567,6 @@ static void conn_init(void) {
         headroom : 10
         next_fd : 17 //왜 17일까? -> 위에 이유 써져있다
         */
-    printf("\t max_fds : %d\n", max_fds);
-    printf("\t settings.maxconns : %d\n", settings.maxconns);
-    printf("\t headroom : %d\n", headroom);
-    printf("\t next_fd : %d\n", next_fd);
 
 
     /* But if possible, get the actual highest FD we can possibly ever see. */
@@ -620,7 +577,6 @@ static void conn_init(void) {
         RLIMIT_NOFILE : 리눅스에서 정의한 상수, 프로세스가 동시에 열 수 있는 최대 파일디스크립터 수를 뜻한다.
     */
     if (getrlimit(RLIMIT_NOFILE, &rl) == 0) {
-        printf("memcached/memcached.c :: conn_init() 2\n");
         max_fds = rl.rlim_max; //그래서 1051값은 1024를 넘기때문에, 1024로 다시 설정하는 부분
         //max_fds = 1024
     } else {
@@ -1254,7 +1210,6 @@ static mc_resp* resp_allocate(conn *c) {
     LIBEVENT_THREAD *th = c->thread;
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
-    printf("memcached/memcached.c :: resp_allocate(), open_bundle : %d\n", th->open_bundle);
 
     if (b != NULL) {
         printf("memcached/memcached.c :: resp_allocate()2\n");
@@ -1293,7 +1248,6 @@ static mc_resp* resp_allocate(conn *c) {
         assert(th->open_bundle == NULL);
         b = do_cache_alloc(th->rbuf_cache);
         if (b) {
-            printf("memcached/memcached.c :: resp_allocate()6\n");
             THR_STATS_LOCK(th);
             th->stats.response_obj_bytes += READ_BUFFER_SIZE;
             THR_STATS_UNLOCK(th);
@@ -1314,7 +1268,6 @@ static mc_resp* resp_allocate(conn *c) {
             return NULL;
         }
     }
-    printf("memcached/memcached.c :: resp_allocate()7\n");
     return resp;
 }
 
@@ -1377,7 +1330,6 @@ bool resp_start(conn *c) {
         THR_STATS_UNLOCK(c->thread);
         return false;
     }
-    printf("memcached/memcached.c :: resp_start()2\n");
     // handling the stats counters here to simplify testing
     THR_STATS_LOCK(c->thread);
     c->thread->stats.response_obj_count++;
@@ -1393,9 +1345,7 @@ bool resp_start(conn *c) {
     } else {
         printf("memcached/memcached.c :: resp_start()6\n");
         c->resp->next = resp;
-        printf("memcached/memcached.c :: resp_start()7\n");
         c->resp = resp;
-        printf("memcached/memcached.c :: resp_start()8\n");
     }
     if (IS_UDP(c->transport)) {
         // need to hold on to some data for async responses.
@@ -1403,7 +1353,7 @@ bool resp_start(conn *c) {
         c->resp->request_addr = c->request_addr;
         c->resp->request_addr_size = c->request_addr_size;
     }
-    printf("memcached/memcached.c :: resp_start()9\n");
+
     return true;
 }
 
@@ -1452,7 +1402,6 @@ mc_resp* resp_finish(conn *c, mc_resp *resp) {
             pthread_mutex_unlock(&t->proxy_limit_lock);
         }
 #endif
-        printf("memcached/memcached.c :: resp_finish() 4\n");
         free(resp->write_and_free);
     }
     if (resp->io_pending) {
@@ -1666,14 +1615,11 @@ static void reset_cmd_handler(conn *c) {
     printf("memcached/memcached.c:: reset_cmd_handler start, c->resp_head : %d\n", c->resp_head);
     c->cmd = -1;
     c->substate = bin_no_state;
-    printf("\t c->item is null : %d\n", c->item);
-    printf("\t c->sfd : %d\n", c->sfd);
     if (c->item != NULL) {
         printf("memcached/memcached.c:: reset_cmd_handler start c->item is not null\n");
         // TODO: Any other way to get here?
         // SASL auth was mistakenly using it. Nothing else should?
         if (c->item_malloced) {
-            printf("memcached/memcached.c:: reset_cmd_handler start c->item free\n");
             free(c->item);
             c->item_malloced = false;
         } else {
@@ -1683,19 +1629,13 @@ static void reset_cmd_handler(conn *c) {
     }
     //상황에 따라 다르게 들어감, 주로 resp_head 아니면 else에 들어감
     if (c->rbytes > 0) { //파싱할 데이터가 있을 때
-        if (settings.verbose) {
-            printf("memcached/memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
-        }
+        printf("memcached/memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
         conn_set_state(c, conn_parse_cmd);
     } else if (c->resp_head) { //보낼 메세지가 있을 때
-        if (settings.verbose) {
-            printf("memcached/memcached.c :: reset_cmd_handler4, \t c->resp_head : %s\n \t wbytes : %d\n \t tosend : %d", c->resp_head->wbuf, c->resp_head->wbytes, c->resp_head->tosend);
-        }
+        printf("memcached/memcached.c :: reset_cmd_handler4, c->resp_head\n");
         conn_set_state(c, conn_mwrite);
     } else { //아무것도 아닐 때
-        if (settings.verbose) {
-            printf("memcached/memcached.c :: reset_cmd_handler4, else\n");
-        }
+        printf("memcached/memcached.c :: reset_cmd_handler4, else\n");
         conn_set_state(c, conn_waiting);
     }
 }
@@ -2727,9 +2667,7 @@ static enum try_read_result try_read_udp(conn *c) {
  * @return enum try_read_result
  */
 static enum try_read_result try_read_network(conn *c) {
-    if (settings.verbose) {
-        printf("memcached/memcached.c :: try_read_network()\n");
-    }
+    printf("memcached/memcached.c :: try_read_network()\n");
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
     int num_allocs = 0;
@@ -2766,44 +2704,10 @@ static enum try_read_result try_read_network(conn *c) {
         }
 
         int avail = c->rsize - c->rbytes;
-        if (settings.verbose) {
-            printf("memcached/memcached.c :: try_read_network() avail : %d\n", avail);
-            printf("memcached/memcached.c :: try_read_network() c->rsize : %d\n", c->rsize);
-            printf("memcached/memcached.c :: try_read_network() c->rbytes : %d\n", c->rbytes);
-            printf("memcached/memcached.c :: try_read_network() called read() function\n");
-        }
 
         #if ENABLE_SOCKET_FUNCTIONS
             res = c->read(c, c->rbuf + c->rbytes, avail);
         #endif
-        printf("\t res : %d\n", res);
-        printf("\t c->rbytes : %d\n", c->rbytes);
-        printf("\t c->rbuf : %s\n", c->rbuf);
-
-        /************************yedam code start**********************/
-        //수신 버퍼
-        #if ENABLE_MPI_FUNCTIONS
-            char mpi_recv_buf[100];
-            int mpi_res;
-            MPI_Status mpi_recv_status;
-            printf("memcached/memcached.c MPI_Recv() start\n");
-            memset(c->rbuf, 0, avail);
-            printf("\t sizeof c->rbuf : %d\n", avail);
-            printf("\t before MPI_Recv c->rbuf : %s\n", c->rbuf);
-            MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-            //MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-            //[참고] 수신 번호를 모를 경우, MPI_ANY_SOURCE로 아무에게나 오는 모든 메세지를 받을 수 있다.
-            // 일단 이렇게 구현해보자
-            printf("memcached/memcached.c recv buf : %s | 송신 rank : %d\n", c->rbuf, mpi_recv_status.MPI_SOURCE);
-            MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-
-
-            for(int i=0; i<res; i++){
-                printf("\t %d : %c\n",i, c->rbuf[i]);
-            }
-        #endif
-        printf("********************************************************\n");
-        /************************yedam code end**********************/
 
         if (res > 0) {
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -2906,10 +2810,8 @@ void do_accept_new_conns(const bool do_accept) {
 #define TRANSMIT_ONE_RESP true
 #define TRANSMIT_ALL_RESP false
 static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp) {
-    printf("memcached/memcached.c :: _transmit_pre()\n");
     mc_resp *resp = c->resp_head;
-    printf("\t resp->wbuf : %s\n", resp->wbuf);
-    printf("\t iovused : %d\n", iovused);
+    printf("memcached/memcached.c :: _transmit_pre() resp->wbuf : %s\n", resp->wbuf);
 
     while (resp && iovused + resp->iovcnt < IOV_MAX-1) {
         printf("memcached/memcached.c :: _transmit_pre()1\n");
@@ -3350,7 +3252,7 @@ static int read_into_chunked_item(conn *c) {
 }
 
 static void drive_machine(conn *c) {
-    printf("memcached/memcached.c :: drive_machine()[1]\n");
+    printf("memcached/memcached.c :: drive_machine()\n");
     bool stop = false;
     int sfd;
     socklen_t addrlen;
@@ -3367,7 +3269,6 @@ static void drive_machine(conn *c) {
     assert(c != NULL);
     //printf("c->thread->open_bundle : %d\n", c->thread->open_bundle);
     while (!stop) {
-        printf("memcached/memcached.c :: drive_machine()[2]\n");
         switch(c->state) {
         case conn_listening:
             printf("memcached/memcached.c :: drive_machine - conn_listening\n");
@@ -3466,7 +3367,6 @@ static void drive_machine(conn *c) {
                     break;
                 }
                 res = try_read_network(c); //여기 들어감
-                printf("memcached/memcached.c :: drive_machine - conn_read res : %d\n", res);
             } else {
                 // UDP connections always have a static buffer.
                 res = try_read_udp(c);
@@ -3489,9 +3389,7 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_parse_cmd:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_parse_cmd\n");
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_parse_cmd\n");    
             c->noreply = false;
             if (c->try_read_command(c) == 0) {
                 /* we need more data! */
@@ -3507,10 +3405,8 @@ static void drive_machine(conn *c) {
 
         case conn_new_cmd:
             printf("memcached/memcached.c :: drive_machine - conn_new_cmd\n");
-            printf("c->thread->open_bundle : %d\n", c->thread->open_bundle);
             /* Only process nreqs at a time to avoid starving other
                connections */
-
             --nreqs;
             if (nreqs >= 0) {
                 printf("memcached/memcached.c :: drive_machine - conn_new_cmd1\n");
@@ -3539,19 +3435,14 @@ static void drive_machine(conn *c) {
                         break;
                     }
                 }
-                printf("memcached/memcached.c :: drive_machine - conn_new_cmd5\n");
                 stop = true;
             }
             break;
 
         case conn_nread:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_nread\n");
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_nread\n");
             if (c->rlbytes == 0) {
-                if (settings.verbose) {
-                    printf("memcached/memcached.c :: drive_machine - conn_nread, complete_nread\n");
-                }
+                printf("memcached/memcached.c :: drive_machine - conn_nread, complete_nread\n");
                 complete_nread(c);
                 break;
             }
@@ -3567,39 +3458,26 @@ static void drive_machine(conn *c) {
 
             if (c->item_malloced || ((((item *)c->item)->it_flags & ITEM_CHUNKED) == 0) ) {
                 /* first check if we have leftovers in the conn_read buffer */
-                if (settings.verbose) {
-                    printf("memcached/memcached.c :: drive_machine - conn_nread2, c->item_malloced : %d\n", c->item_malloced);
-                }
+                printf("memcached/memcached.c :: drive_machine - conn_nread2\n");
                 if (c->rbytes > 0) {
-                    if (settings.verbose) {
-                        printf("memcached/memcached.c :: drive_machine - conn_nread3\n");
-                    }
+                    printf("memcached/memcached.c :: drive_machine - conn_nread3\n");
                     int tocopy = c->rbytes > c->rlbytes ? c->rlbytes : c->rbytes;
-                    if (settings.verbose) {
-                        printf("memcached/memcached.c :: drive_machine - conn_nread3, tocopy: %d\n", tocopy);
-                    }
+                    printf("memcached/memcached.c :: drive_machine - conn_nread3, tocopy: %d\n", tocopy);
                     memmove(c->ritem, c->rcurr, tocopy);
                     c->ritem += tocopy;
                     c->rlbytes -= tocopy;
                     c->rcurr += tocopy;
                     c->rbytes -= tocopy;
                     if (c->rlbytes == 0) {
-                        if (settings.verbose) {
-                            printf("memcached/memcached.c :: drive_machine - conn_nread3-1\n");
-                        }
+                        printf("memcached/memcached.c :: drive_machine - conn_nread3-1\n");
                         break;
                     }
                 }
 
                 /*  now try reading from the socket */
-                if (settings.verbose) {
-                    printf("memcached/memcached.c :: drive_machine - conn_nread4\n");
-                }
                 res = c->read(c, c->ritem, c->rlbytes);
                 if (res > 0) {
-                    if (settings.verbose) {
-                        printf("memcached/memcached.c :: drive_machine - conn_nread5\n");
-                    }
+                    printf("memcached/memcached.c :: drive_machine - conn_nread5\n");
                     pthread_mutex_lock(&c->thread->stats.mutex);
                     c->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&c->thread->stats.mutex);
@@ -3661,9 +3539,7 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_swallow:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_swallow\n");
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_swallow\n");
             /* we are reading sbytes and throwing them away */
             if (c->sbytes <= 0) {
                 conn_set_state(c, conn_new_cmd);
@@ -3711,9 +3587,7 @@ static void drive_machine(conn *c) {
 
         case conn_write:
         case conn_mwrite:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_write, conn_mwrite\n");
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_write, conn_mwrite\n");
             /* have side IO's that must process before transmit() can run.
              * remove the connection from the worker thread and dispatch the
              * IO queue
@@ -3721,9 +3595,7 @@ static void drive_machine(conn *c) {
                 해당 연결을 워커 스레드에서 제거하고, I/O 큐로 디스패치한다.
              */
             if (c->resps_suspended) {
-                if (settings.verbose) {
-                    printf("memcached/memcached.c :: drive_machine, conn_mwrite0\n");
-                }
+                printf("memcached/memcached.c :: drive_machine, conn_mwrite1\n");
                 LIBEVENT_THREAD *t = c->thread;
                 // FIXME: carefully check or document somewhere that submit
                 // cannot resume a connection in-line with submission.
@@ -3793,18 +3665,14 @@ static void drive_machine(conn *c) {
             stop = true;
             break;
         case conn_io_queue:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_io_queue\n");    
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_io_queue\n");   
             /* Woke up while waiting for an async return, but not ready. */
             event_del(&c->event);
             conn_set_state(c, conn_io_pending);
             stop = true;
             break;
         case conn_io_pending:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_io_pending\n");   
-            }
+            printf("memcached/memcached.c :: drive_machine - conn_io_pending\n");   
             /* Should not be reachable */
             assert(false);
             break;
@@ -4488,7 +4356,6 @@ static void clock_handler(const evutil_socket_t fd, const short which, void *arg
     evtimer_set(&clockevent, clock_handler, 0);
     event_base_set(main_base, &clockevent);
     evtimer_add(&clockevent, &t);
-    printf("memcached/memcached.c :: clock_handler() 4\n");
 #ifdef MEMCACHED_DEBUG
     if (is_paused) return;
 #endif
@@ -5237,8 +5104,110 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 
 #if ENABLE_MPI_FUNCTIONS
 
+/* Does a looped read to fill data chunks */
+/* TODO: restrict number of times this can loop.
+ * Also, benchmark using readv's.
+ */
+
+bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c) {
+    // Might as well start with x2 and work from there.
+    size_t size = c->rsize * 2;
+    char *tmp = malloc(size);
+    if (!tmp)
+        return false;
+
+    memcpy(tmp, c->rcurr, c->rbytes);
+    do_cache_free(c->thread->rbuf_cache, c->rbuf);
+
+    c->rcurr = c->rbuf = tmp;
+    c->rsize = size;
+    c->rbuf_malloced = true;
+    return true;
+}
+
+
+
+static int mpi_read_into_chunked_item(struct mpi_conn_info *c) {
+    int total = 0;
+    int res;
+    assert(c->rcurr != c->ritem);
+    printf("memcached/memcached.c :: read_into_chunked_item\n");
+    while (c->rlbytes > 0) {
+        item_chunk *ch = (item_chunk *)c->ritem;
+        if (ch->size == ch->used) {
+            // FIXME: ch->next is currently always 0. remove this?
+            if (ch->next) {
+                c->ritem = (char *) ch->next;
+            } else {
+                /* Allocate next chunk. Binary protocol needs 2b for \r\n */
+                c->ritem = (char *) do_item_alloc_chunk(ch, c->rlbytes +
+                       ((c->protocol == binary_prot) ? 2 : 0));
+                if (!c->ritem) {
+                    // We failed an allocation. Let caller handle cleanup.
+                    total = -2;
+                    break;
+                }
+                // ritem has new chunk, restart the loop.
+                continue;
+                //assert(c->rlbytes == 0);
+            }
+        }
+
+        int unused = ch->size - ch->used;
+        /* first check if we have leftovers in the conn_read buffer */
+        if (c->rbytes > 0) {
+            total = 0;
+            int tocopy = c->rbytes > c->rlbytes ? c->rlbytes : c->rbytes;
+            tocopy = tocopy > unused ? unused : tocopy;
+            if (c->ritem != c->rcurr) {
+                memmove(ch->data + ch->used, c->rcurr, tocopy);
+            }
+            total += tocopy;
+            c->rlbytes -= tocopy;
+            c->rcurr += tocopy;
+            c->rbytes -= tocopy;
+            ch->used += tocopy;
+            if (c->rlbytes == 0) {
+                break;
+            }
+        } else {
+            /*  now try reading from the socket */
+            //res = c->read(c, ch->data + ch->used, (unused > c->rlbytes ? c->rlbytes : unused));
+            res = mpi_try_read_network(c);
+            if (res > 0) {
+                pthread_mutex_lock(&c->thread->stats.mutex);
+                c->thread->stats.bytes_read += res;
+                pthread_mutex_unlock(&c->thread->stats.mutex);
+                ch->used += res;
+                total += res;
+                c->rlbytes -= res;
+            } else {
+                /* Reset total to the latest result so caller can handle it */
+                total = res;
+                break;
+            }
+        }
+    }
+
+    /* At some point I will be able to ditch the \r\n from item storage and
+       remove all of these kludges.
+       The above binprot check ensures inline space for \r\n, but if we do
+       exactly enough allocs there will be no additional chunk for \r\n.
+     */
+    if (c->rlbytes == 0 && c->protocol == binary_prot && total >= 0) {
+        item_chunk *ch = (item_chunk *)c->ritem;
+        if (ch->size - ch->used < 2) {
+            c->ritem = (char *) do_item_alloc_chunk(ch, 2);
+            if (!c->ritem) {
+                total = -2;
+            }
+        }
+    }
+    return total;
+}
+
 void mpi_conn_release_items(struct mpi_conn_info *c) {
-    printf("memcached/memcached.c :: mpi_conn_release_items () \n");
+    printf("memcached/memcached.c :: mpi_conn_release_items ()\n");
     //exit(0); //일단 이렇게 해두기
     assert(c != NULL);
 
@@ -5289,7 +5258,6 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr){
     mpi_conn_arr[1].rbuf = NULL;
     mpi_conn_arr[1].rcurr = mpi_conn_arr[1].rbuf;
     mpi_conn_arr[1].rbytes = 0;
-    printf("memcached/memcached.c :: mpi_conn_init() calloc 전\n");
     mpi_conn_arr[1].thread = calloc(1, sizeof(LIBEVENT_THREAD));
     mpi_conn_arr[1].item = NULL;
     mpi_conn_arr[1].resps_suspended = 0;
@@ -5305,27 +5273,67 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr){
 
 }
 
-static enum try_read_result mpi_try_read_network(struct mpi_conn_info* client){ 
-     printf("memcached/mpi_try_read_network, client->rbytes : %d\n",  client->rbytes);
+static void mpi_conn_cleanup(struct mpi_conn_info *c) {
+    assert(c != NULL);
+    conn_release_items(c);
+}
+
+
+static void mpi_conn_close(struct mpi_conn_info *c) {
+    printf("memcached/memcached.c :: mpi_conn_close()\n");
+    assert(c != NULL);
+
+    if (c->thread) {
+        // LOGGER_LOG(c->thread->l, LOG_CONNEVENTS, LOGGER_CONNECTION_CLOSE, NULL,
+        //         &c->request_addr, c->request_addr_size, c->transport,
+        //         c->close_reason, c->sfd);
+    }
+
+    if (settings.verbose > 1)
+        fprintf(stderr, "<%d connection closed.\n", c->rank);
+
+    mpi_conn_cleanup(c);
+
+    // force release of read buffer.
+    if (c->thread) {
+        c->rbytes = 0;
+        mpi_rbuf_release(c);
+    }
+
+    c->state = conn_closed;
+
+    c->close_reason = 0;
+
+    pthread_mutex_lock(&conn_lock);
+    allow_new_conns = true;
+    pthread_mutex_unlock(&conn_lock);
+
+    STATS_LOCK();
+    stats_state.curr_conns--;
+    STATS_UNLOCK();
+
+    return;
+}
+
+static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){ 
+     printf("memcached/mpi_try_read_network, client->rbytes : %d\n",  c->rbytes);
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
 
-    if (client->rcurr != client->rbuf) {
-        if (client->rbytes > 0) /* otherwise there's nothing to copy */
-            memmove(client->rbuf, client->rcurr, client->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
-        client->rcurr = client->rbuf;
+    if (c->rcurr != c->rbuf) {
+        if (c->rbytes > 0) /* otherwise there's nothing to copy */
+            memmove(c->rbuf, c->rcurr, c->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
+        c->rcurr = c->rbuf;
     }
 
 
     while(1){
-        int avail = client->rsize - client->rbytes;
-        printf("avail : %d\n", avail);
-        printf("buf : %s\n", client->rbuf);
+        int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
-        memset(client->rbuf, 0, avail);
+        memset(c->rbuf, 0, avail);
         //MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
-        int err = MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
@@ -5336,15 +5344,30 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* client){
 
 
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-        printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s\n", client->rbuf);
+        printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s\n", c->rbuf);
 
         if(res > 0){
+            pthread_mutex_lock(&c->thread->stats.mutex);
+            c->thread->stats.bytes_read += res;
+            pthread_mutex_unlock(&c->thread->stats.mutex);
             gotdata = READ_DATA_RECEIVED;
-            client->rbytes += res;
-            break;
+            c->rbytes += res;
+            if (res == avail && c->rbuf_malloced) {
+                // Resize rbuf and try a few times if huge ascii multiget.
+                continue;
+            } else {
+                break;
+            }
         }
-        if(res == 0 || res == -1){
-            exit(0); //정상적으로 종료되는 건 아닌데 일단 종료시키기
+        if (res == 0) {
+            c->close_reason = NORMAL_CLOSE;
+            return READ_ERROR;
+        }
+        if (res == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+            return READ_ERROR;
         }
     }
 
@@ -5363,16 +5386,6 @@ mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
     }
     if (resp->write_and_free) {
         printf("memcached/memcached.c :: mpi_resp_finish() 2\n");
-#ifdef PROXY
-        if (resp->proxy_res) {
-            printf("memcached/memcached.c :: mpi_resp_finish() 3\n");
-            LIBEVENT_THREAD *t = resp->bundle->thread;
-            pthread_mutex_lock(&t->proxy_limit_lock);
-            t->proxy_buffer_memory_used -= resp->wbytes;
-            pthread_mutex_unlock(&t->proxy_limit_lock);
-        }
-#endif
-        printf("memcached/memcached.c :: mpi_resp_finish() 4\n");
         free(resp->write_and_free);
     }
     if (resp->io_pending) {
@@ -5460,29 +5473,28 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
 
 
 static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused) {
-    printf("memcached/memcached.c :: _transmit_pre()\n");
     mc_resp *resp = c->resp_head;
-    printf("\t resp->wbuf : %s\n", resp->wbuf);
+    printf("memcached/memcached.c :: mpi_transmit_pre(), resp->wbuf : %s\n", resp->wbuf);
 
 
     while (resp && iovused + resp->iovcnt < IOV_MAX-1) {
-        printf("memcached/memcached.c :: _transmit_pre()1\n");
+        printf("memcached/memcached.c :: mpi_transmit_pre()1\n");
         if (resp->skip) {
-            printf("memcached/memcached.c :: _transmit_pre()2\n");
+            printf("memcached/memcached.c :: mpi_transmit_pre()2\n");
             // Don't actually unchain the resp obj here since it's singly-linked.
             // Just let the post function handle it linearly.
             resp = resp->next;
             continue;
         }
         if (resp->chunked_data_iov) {
-            printf("memcached/memcached.c :: _transmit_pre()3\n");
+            printf("memcached/memcached.c :: mpi_transmit_pre()3\n");
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
             item_chunk *ch = (item_chunk *)ITEM_schunk((item *)resp->iov[resp->chunked_data_iov].iov_base);
             int x;
             for (x = 0; x < resp->iovcnt; x++) {
-                printf("memcached/memcached.c :: _transmit_pre()3-1\n");
+                printf("memcached/memcached.c :: mpi_transmit_pre()3-1\n");
                 // This iov is tracking how far we've copied so far.
                 if (x == resp->chunked_data_iov) {
                     int done = resp->chunked_total - resp->iov[x].iov_len;
@@ -5512,33 +5524,32 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
                         ch = ch->next;
                     }
                 } else {
-                    printf("memcached/memcached.c :: _transmit_pre()4\n");
+                    printf("memcached/memcached.c :: mpi_transmit_pre()4\n");
                     iovs[iovused].iov_base = resp->iov[x].iov_base;
                     iovs[iovused].iov_len = resp->iov[x].iov_len;
                     iovused++;
                 }
                 if (iovused >= IOV_MAX-1)
-                    printf("memcached/memcached.c :: _transmit_pre()5\n");
+                    printf("memcached/memcached.c :: mpi_transmit_pre()5\n");
                     break;
             }
         } else {
+            printf("memcached/memcached.c :: mpi_transmit_pre()5-1\n");
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
-        printf("memcached/memcached.c :: _transmit_pre()6\n");
+        printf("memcached/memcached.c :: mpi_transmit_pre()6\n");
         // done looking at first response, walk down the chain.
         resp = resp->next;
         //printf("\t resp->wbuf2 : %s\n", resp->wbuf);
     }
-    printf("memcached/memcached.c :: _transmit_pre()7, iovused : %d\n");
+    printf("memcached/memcached.c :: mpi_transmit_pre()7, iovused : %d\n");
     return iovused;
 }
 
 
 ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
-    if (settings.verbose) {
-        printf("memcached/memcached.c :: mpi_sendmsg()\n");
-    }
+    printf("memcached/memcached.c :: mpi_sendmsg()\n");
     /*여기는 실제 transmit 함수 부분. 내가 그냥 conn_mwrite/conn_write 에서 바로 메세지를 보낼 수 있게 통합함.*/
 
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
@@ -5548,7 +5559,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
     // init the msg.
     memset(&msg, 0, sizeof(struct msghdr));
     msg.msg_iov = iovs;
-    printf("memcached/memcached.c :: mpi_sendmsg() call mpi_transmit_pre()\n");
+
     iovused = mpi_transmit_pre(c, iovs, iovused);
 
 
@@ -5562,7 +5573,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
 
     char mpi_send_buf[1024];
     ssize_t offset=0;
-    printf("memcached/memcached.c :: mpi_sendmsg() 2\n");
+
     for (int i = 0; i < iovused; i++) {
         struct iovec *iov = &msg.msg_iov[i];
         memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
@@ -5575,11 +5586,10 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
 
     printf("memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송\n");
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
-    printf("memcached/memcached.c :: mpi_sendmsg() 5 MPI_Send 전송 완\n");
     printf("\t offset : %zu\n", offset);
 
     if (offset >= 0) {
-        printf("memcached/memcached.c :: mpi_sendmsg() offset >= 0\n");
+
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += offset;
         pthread_mutex_unlock(&c->thread->stats.mutex);
@@ -5597,12 +5607,6 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
     }
 
     if (offset == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        // if (!update_event(c, EV_WRITE | EV_PERSIST)) {
-        //     if (settings.verbose > 0)
-        //         fprintf(stderr, "Couldn't update event\n");
-        //     conn_set_state(c, conn_closing);
-        //     return TRANSMIT_HARD_ERROR;
-        // }
         c->state = conn_closing;
         return TRANSMIT_SOFT_ERROR;
     }
@@ -5619,20 +5623,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
 
 static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
     printf("memcached/memcached.c :: mpi_rbuf_alloc()\n");
-    printf("\t thread id : %d\n", c->thread->thread_id);
-    printf("\t base : %d\n", c->thread->base);
-    printf("\t cur_sfd : %d\n", c->thread->cur_sfd);
-    printf("\t thread_baseid : %d\n", c->thread->thread_baseid);
-    printf("\t conns_tosubmit : %d\n", c->thread->conns_tosubmit);
-    printf("\t stats : %d\n", c->thread->stats);
-    printf("\t rbuf_cache : %d\n", c->thread->rbuf_cache);
-    printf("\t open_bundle : %d\n", c->thread->open_bundle);
-    printf("\t io_cache : %d\n", c->thread->io_cache);
-
-    printf("\t l : %d\n", c->thread->l);
-    printf("\t napi_id : %d\n", c->thread->napi_id);
     if (c->rbuf == NULL) {
-
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
         printf("\t c->rbuf : %d\n", c->rbuf);
         if (!c->rbuf) {
@@ -5650,13 +5641,13 @@ static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
 static void mpi_rbuf_release(struct mpi_conn_info *c) {
     printf("memcached/memcached.c :: mpi_rbuf_release\n");
     if (c->rbuf != NULL && c->rbytes == 0) {
-        printf("memcached/memcached.c :: mpi_rbuf_release [1]\n");
+        printf("memcached/memcached.c :: mpi_rbuf_release1\n");
         if (c->rbuf_malloced) {
-            printf("memcached/memcached.c :: mpi_rbuf_release [2]\n");
+            printf("memcached/memcached.c :: mpi_rbuf_release2\n");
             free(c->rbuf);
             c->rbuf_malloced = false;
         } else {
-            printf("memcached/memcached.c :: mpi_rbuf_release [3]\n");
+            printf("memcached/memcached.c :: mpi_rbuf_release3\n");
             do_cache_free(c->thread->rbuf_cache, c->rbuf);
         }
         c->rsize = 0;
@@ -5669,11 +5660,9 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
     printf("memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : %d\n", c->resp_head);
     c->cmd = -1;
     c->substate = bin_no_state;
-    printf("\t c->item is null : %p\n", c->item);
-    //printf("\t c->sfd : %d\n", c->sfd);
     if (c->item != NULL) {
+        printf("memcached/memcached.c:: mpi_reset_cmd_handler start c->item is not null\n");
         if (c->item_malloced) {
-            printf("memcached/memcached.c:: mpi_reset_cmd_handler, free\n");
             free(c->item);
             c->item_malloced = false;
         } else {
@@ -5683,16 +5672,13 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
     }
     //상황에 따라 다르게 들어감, 주로 resp_head 아니면 else에 들어감
     if (c->rbytes > 0) {
-        printf("memcached/memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
-        //conn_set_state(c, conn_parse_cmd);
+        printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->rbytes > 0\n");
         c->state = conn_parse_cmd;
     } else if (c->resp_head) {
-        printf("memcached/memcached.c :: reset_cmd_handler4, c->resp_head\n");
-        //conn_set_state(c, conn_mwrite);
+        printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head\n");
         c->state = conn_mwrite;
     } else { //여기 들어감
-        printf("memcached/memcached.c :: reset_cmd_handler4, else\n");
-        //conn_set_state(c, conn_waiting);
+        printf("memcached/memcached.c :: mpi_reset_cmd_handler, else\n");
         c->state = conn_waiting;
     }
 }
@@ -5705,12 +5691,9 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
     const char *str;
     int nreqs = settings.reqs_per_event;
     while(!stop){
-        //printf("memcached/memcached.c :: mpi_drive_machine - while\n");
         switch(client->state){
-            printf("memcached/memcached.c :: mpi_drive_machine - c->state : %d\n", client->state);
         case conn_listening:
             printf("memcached/memcached.c :: mpi_drive_machine - conn_listening\n");
-            printf("maxconns_fast : %d\n", settings.maxconns_fast);
             bool reject;
             if (settings.maxconns_fast) {
                 reject = client->rank >= settings.maxconns - 1;
@@ -5727,62 +5710,56 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                 str = "ERROR Too many open connections\r\n";
                 res = write(client->rank, str, strlen(str));
                 exit(0); //yedam
-                //close(sfd);
             } else { //여기 들어감
                 // run accept routine if ssl is compiled + enabled
-                bool fail = false;
-                //void *ssl_v = ssl_accept(c, sfd, &fail); //yedam
-                if (fail) {
-                    //close(sfd);
-                    break;
-                }
                 //여기 호출됨
                 printf("memcached/memcached.c :: mpi_drive_machine - call mpi_dispatch_conn_new\n");
                 mpi_dispatch_conn_new(client, conn_new_cmd, EV_READ | EV_PERSIST,
                                     READ_BUFFER_CACHED, client->transport, client->tag, client->protocol);
                 client->state=conn_new_cmd;
-
-                printf("memcached/memcached.c :: mpi_drive_machine - end mpi_dispatch_conn_new, item : %p\n", client->item);
-                printf("memcached/memcached.c :: mpi_drive_machine - end mpi_dispatch_conn_new, resp_head : %p\n", client->resp_head);
+                printf("memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new\n");
             }
             break;
         case conn_read:
-            printf("memcached/memcached.c :: mpi_drive_machine - conn_read, client->resps_suspended : %d\n", client->resps_suspended);
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_read\n");
             if (!mpi_rbuf_alloc(client)) { //여기는 안들어감
-                // TODO: Some way to allow for temporary failures.
                 client->state = conn_closing;
                 break;
             }
             
-            printf("memcached/memcached.c :: mpi_drive_machine(), client->rbytes : %d\n", client->rbytes);
             res = mpi_try_read_network(client);
             switch(res){
-            case READ_DATA_RECEIVED:
-                printf("memcached/memcached.c :: drive_machine - client state is changed conn_parse_cmd\n");
+            case READ_NO_DATA_RECEIVED: //여기 안들어감
+                client->state = conn_waiting;
+                break;
+            case READ_DATA_RECEIVED: //여기 들어감 -> conn_parse_cmd로 변경
                 client->state = conn_parse_cmd;
+                break;
+            case READ_ERROR: //여기 안들어감
+                client->state = conn_closing;
+                break;
+            case READ_MEMORY_ERROR: /* Failed to allocate more memory */ //여기 안들어감
+                /* State already set by try_read_network */
                 break;
             }
             break;
          
         case conn_parse_cmd:
-            printf("memcached/memcached.c :: drive_machine - conn_parse_cmd\n");
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_parse_cmd\n");
             client->noreply = false;
             if (mpi_try_read_command_ascii(client) == 0) {
                 /* we need more data! */
-                // if (client->resp_head) {
-                //     // Buffered responses waiting, flush in the meantime.
-                //     conn_set_state(c, conn_mwrite);
-                // } else {
-                //     conn_set_state(c, conn_waiting);
-                // }
-                printf("memcached/memcached.c :: drive_machine - conn_parse_cmd exit\n");
-                exit(0);
+                if (client->resp_head) {
+                    // Buffered responses waiting, flush in the meantime.
+                    client->state = conn_mwrite;
+                } else {
+                    client->state = conn_waiting;
+                }
             }
-            printf("에?\n");
             break;
             
         case conn_nread:
-            printf("memcached/memcached.c :: drive_machine - conn_nread, client->resps_suspended : %d\n", client->resps_suspended);
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_nread\n");
             if (client->rlbytes == 0) {
                 printf("memcached/memcached.c :: drive_machine - conn_nread, complete_nread\n");
                 mpi_complete_nread_ascii(client);
@@ -5802,7 +5779,6 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                 /* first check if we have leftovers in the conn_read buffer */
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_nread2\n");
                 if (client->rbytes > 0) {
-                    printf("memcached/memcached.c :: mpi_drive_machine - conn_nread3\n");
                     int tocopy = client->rbytes > client->rlbytes ? client->rlbytes : client->rbytes;
                     printf("memcached/memcached.c :: mpi_drive_machine - conn_nread3, tocopy: %d\n", tocopy);
                     memmove(client->ritem, client->rcurr, tocopy);
@@ -5817,13 +5793,9 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                 }
 
                 /*  now try reading from the socket */
-                    printf("memcached/memcached.c :: mpi_drive_machine - conn_nread4\n");
-
                 res = mpi_try_read_network(client);
                 if (res > 0) {
-                    if (settings.verbose) {
-                        printf("memcached/memcached.c :: mpi_drive_machine - conn_nread5\n");
-                    }
+                    printf("memcached/memcached.c :: mpi_drive_machine - conn_nread5\n");
                     pthread_mutex_lock(&client->thread->stats.mutex);
                     client->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&client->thread->stats.mutex);
@@ -5835,63 +5807,100 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                     break;
                 }
             } else {
-                printf("memcached/memcached.c :: mpi_drive_machine - read_into_chunked_item\n");
-                //res = read_into_chunked_item(c);
-                // if (res > 0)
-                //     break;
+                printf("memcached/memcached.c :: mpi_drive_machine - mpi_read_into_chunked_item\n");
+                res = mpi_read_into_chunked_item(client);
+                if (res > 0)
+                    break;
             }
 
-            // if (res == 0) { /* end of stream */
-            //     c->close_reason = NORMAL_CLOSE;
-            //     conn_set_state(c, conn_closing);
-            //     break;
-            // }
+            if (res == 0) { /* end of stream */
+                client->close_reason = NORMAL_CLOSE;
+                client->state = conn_closing;
+                break;
+            }
 
-            // if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            //     if (!update_event(c, EV_READ | EV_PERSIST)) {
-            //         if (settings.verbose > 0)
-            //             fprintf(stderr, "Couldn't update event\n");
-            //         conn_set_state(c, conn_closing);
-            //         break;
-            //     }
-            //     stop = true;
-            //     break;
-            // }
+            if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                client->state = conn_closing;
+                stop = true;
+                break;
+            }
 
             /* Memory allocation failure */
-            // if (res == -2) {
-            //     out_of_memory(c, "SERVER_ERROR Out of memory during read");
-            //     c->sbytes = c->rlbytes;
-            //     conn_set_state(c, conn_swallow);
-            //     // Ensure this flag gets cleared. It gets killed on conn_new()
-            //     // so any conn_closing is fine, calling complete_nread is
-            //     // fine. This swallow semms to be the only other case.
-            //     c->set_stale = false;
-            //     c->mset_res = false;
-            //     break;
-            // }
+            if (res == -2) {
+                //out_of_memory(c, "SERVER_ERROR Out of memory during read");
+                mpi_out_string(client, "SERVER_ERROR Out of memory during read");
+                client->sbytes = client->rlbytes;
+                client->state = conn_swallow;
+
+                // Ensure this flag gets cleared. It gets killed on conn_new()
+                // so any conn_closing is fine, calling complete_nread is
+                // fine. This swallow semms to be the only other case.
+                client->set_stale = false;
+                client->mset_res = false;
+                break;
+            }
             /* otherwise we have a real error, on which we close the connection */
-            // if (settings.verbose > 0) {
-            //     fprintf(stderr, "Failed to read, and not due to blocking:\n"
-            //             "errno: %d %s \n"
-            //             "rcurr=%p ritem=%p rbuf=%p rlbytes=%d rsize=%d\n",
-            //             errno, strerror(errno),
-            //             (void *)c->rcurr, (void *)c->ritem, (void *)c->rbuf,
-            //             (int)c->rlbytes, (int)c->rsize);
-            // }
+            if (settings.verbose > 0) {
+                fprintf(stderr, "Failed to read, and not due to blocking:\n"
+                        "errno: %d %s \n"
+                        "rcurr=%p ritem=%p rbuf=%p rlbytes=%d rsize=%d\n",
+                        errno, strerror(errno),
+                        (void *)client->rcurr, (void *)client->ritem, (void *)client->rbuf,
+                        (int)client->rlbytes, (int)client->rsize);
+            }
+            client->state = conn_closing;
+            break;
+        case conn_swallow:
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_swallow\n");
+            /* we are reading sbytes and throwing them away */
+            if (client->sbytes <= 0) {
+                client->state = conn_new_cmd;
+                break;
+            }
+
+            /* first check if we have leftovers in the conn_read buffer */
+            if (client->rbytes > 0) {
+                int tocopy = client->rbytes > client->sbytes ? client->sbytes : client->rbytes;
+                client->sbytes -= tocopy;
+                client->rcurr += tocopy;
+                client->rbytes -= tocopy;
+                break;
+            }
+
+            /*  now try reading from the socket */
+            //res = c->read(c, c->rbuf, c->rsize > c->sbytes ? c->sbytes : c->rsize);
+            res = try_read_network(client); //여기 들어감
+            if (res > 0) {
+                pthread_mutex_lock(&client->thread->stats.mutex);
+                client->thread->stats.bytes_read += res;
+                pthread_mutex_unlock(&client->thread->stats.mutex);
+                client->sbytes -= res;
+                break;
+            }
+            if (res == 0) { /* end of stream */
+                client->close_reason = NORMAL_CLOSE;
+                client->state = conn_closing;
+                break;
+            }
+            if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                client->state = conn_closing;
+                stop = true;
+                break;
+            }
+            /* otherwise we have a real error, on which we close the connection */
+            if (settings.verbose > 0)
+                fprintf(stderr, "Failed to read, and not due to blocking\n");
             client->state = conn_closing;
             break;
         case conn_new_cmd:
-            printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd, client->resps_suspended : %d\n", client->resps_suspended);
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd\n");
             --nreqs;
             if (nreqs >= 0) {
-                printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1, client->item : %p\n", client->item);
+                printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1\n");
                 mpi_reset_cmd_handler(client); //여기로 들어감
-                printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1-1\n");
             } else if (client->resp_head) { //여기 안들어감
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd2\n");
                 // flush response pipe on yield.
-                //conn_set_state(c, conn_mwrite);
                 client->state = conn_mwrite;
             } else { //여기 안들어감
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd3\n");
@@ -5899,13 +5908,8 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                 client->thread->stats.conn_yields++;
                 pthread_mutex_unlock(&client->thread->stats.mutex);
                 if (client->rbytes > 0) {
-                    // if (!update_event(c, EV_WRITE | EV_PERSIST)) {
-                    //     if (settings.verbose > 0)
-                    //         fprintf(stderr, "Couldn't update event\n");
-                    //     conn_set_state(c, conn_closing);
-                    //     break;
-                    // }
-                    printf("memcached/memcached.c :: mpi_drive_machine - client->rbytes > 0\n");
+                    client->state = conn_closing;
+                    printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd4\n");
 
                 }
                 stop = true;
@@ -5914,26 +5918,18 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
             break;
 
         case conn_waiting:
-            if (settings.verbose) {
-                printf("memcached/memcached.c :: drive_machine - conn_waiting\n");
-            }
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_waiting\n");  
             mpi_rbuf_release(client);
-            // if (!update_event(c, EV_READ | EV_PERSIST)) {
-            //     if (settings.verbose > 0)
-            //         fprintf(stderr, "Couldn't update event\n");
-            //     conn_set_state(c, conn_closing);
-            //     break;
-            // }
+            
             client->state=conn_read;
-            //conn_set_state(c, conn_read);
-            //stop = true;
+            // stop = true;
             break;
         case conn_write:
         case conn_mwrite:
-            printf("memcached/memcached.c :: mpi_drive_machine - conn_write, conn_mwrite, client->resps_suspended : %d\n", client->resps_suspended);
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_write, conn_mwrite\n");
 
             if (client->resps_suspended) {
-                printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite0\n");
+                printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1\n");
                 LIBEVENT_THREAD *t = client->thread;
                 // FIXME: carefully check or document somewhere that submit
                 // cannot resume a connection in-line with submission.
@@ -5964,7 +5960,7 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                         fprintf(stderr, "Unexpected state %d\n", client->state);
                     client->state = conn_closing;
                 }
-                printf("memcached/memcached.c :: drive_machine, conn_mwrite4\n");
+                printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite4\n");
                 break;
 
             case TRANSMIT_INCOMPLETE:
@@ -5976,7 +5972,28 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
                 break;
             }
             break;
+        case conn_closing:
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_closing\n");
+            conn_close(client);
+            stop = true;
+            break;
 
+        case conn_closed:
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_closed\n");    
+            /* This only happens if dormando is an idiot. */
+            abort();
+            break;
+        case conn_io_queue:
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_io_queue\n");    
+            /* Woke up while waiting for an async return, but not ready. */
+            client->state = conn_io_pending;
+            stop = true;
+            break;
+        case conn_io_pending:
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_io_pending\n");   
+            /* Should not be reachable */
+            assert(false);
+            break;
         }
     }
 }
@@ -6023,7 +6040,6 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
     memcpy(resp->wbuf + len, "\r\n", 2);
     resp_add_iov(resp, resp->wbuf, len + 2);
     printf("memcached/memcached.c :: mpi_out_string()5\n");
-    //conn_set_state(c, conn_new_cmd);
     c->state = conn_new_cmd;
     return;
 }
@@ -6034,7 +6050,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
     LIBEVENT_THREAD *th = c->thread;
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
-    printf("memcached/memcached.c :: mpi_resp_allocate(), open_bundle : %d\n", th->open_bundle);
+
     if (b != NULL) {
         printf("memcached/memcached.c :: mpi_resp_allocate()2\n");
         for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) {
@@ -6066,13 +6082,10 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             }
         }
     }
-    printf("memcached/memcached.c :: mpi_resp_allocate()3\n");
     if (resp == NULL) {
-        printf("memcached/memcached.c :: mpi_resp_allocate()4\n");
+        printf("memcached/memcached.c :: mpi_resp_allocate()3\n");
         assert(th->open_bundle == NULL);
-        printf("memcached/memcached.c :: mpi_resp_allocate()5\n");
         b = do_cache_alloc(th->rbuf_cache);
-        printf("memcached/memcached.c :: mpi_resp_allocate()6\n");
         if (b) {
             THR_STATS_LOCK(th);
             th->stats.response_obj_bytes += READ_BUFFER_SIZE;
@@ -6094,7 +6107,6 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             return NULL;
         }
     }
-    printf("memcached/memcached.c :: mpi_resp_allocate()7\n");
     return resp;
 }
 
@@ -6102,12 +6114,12 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
     printf("memcached/memcached.c :: mpi_resp_start()\n");
     mc_resp *resp = mpi_resp_allocate(c);
     if (!resp) {
+        printf("memcached/memcached.c :: mpi_resp_start()1\n");
         THR_STATS_LOCK(c->thread);
         c->thread->stats.response_obj_oom++;
         THR_STATS_UNLOCK(c->thread);
         return false;
     }
-    printf("memcached/memcached.c :: mpi_resp_start()2\n");
     // handling the stats counters here to simplify testing
     THR_STATS_LOCK(c->thread);
     c->thread->stats.response_obj_count++;
@@ -6123,17 +6135,9 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
     } else {
         printf("memcached/memcached.c :: mpi_resp_start()6\n");
         c->resp->next = resp;
-        printf("memcached/memcached.c :: mpi_resp_start()7\n");
         c->resp = resp;
-        printf("memcached/memcached.c :: mpi_resp_start()8\n");
     }
-    // if (IS_UDP(c->transport)) {
-    //     // need to hold on to some data for async responses.
-    //     c->resp->request_id = c->request_id;
-    //     c->resp->request_addr = c->request_addr;
-    //     c->resp->request_addr_size = c->request_addr_size;
-    // }
-    printf("memcached/memcached.c :: mpi_resp_start()9\n");
+
     return true;
 }
 
@@ -6141,14 +6145,6 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
 static void mpi_clock_handler(const evutil_socket_t fd, const short which, void *arg) {
     printf("memcached/memcached.c :: mpi_clock_handler()\n");
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
-    //static bool initialized = false;
-
-    // if (initialized) {
-    //     /* only delete the event if it's actually there. */
-    //     evtimer_del(&clockevent);
-    // } else {
-    //     initialized = true;
-    // }
 
     // While we're here, check for hash table expansion.
     // This function should be quick to avoid delaying the timer.
@@ -6160,17 +6156,9 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
         settings.sig_hup = false;
         printf("memcached/memcached.c :: clock_handler() 2\n");
         authfile_load(settings.auth_file);
-#ifdef PROXY
-        if (settings.proxy_ctx) {
-            proxy_start_reload(settings.proxy_ctx);
-        }
-#endif
     }
     printf("memcached/memcached.c :: clock_handler() 3\n");
-    // evtimer_set(&clockevent, clock_handler, 0);
-    // event_base_set(main_base, &clockevent);
-    // evtimer_add(&clockevent, &t);
-    printf("memcached/memcached.c :: clock_handler() 4\n");
+
 #ifdef MEMCACHED_DEBUG
     if (is_paused) return;
 #endif
