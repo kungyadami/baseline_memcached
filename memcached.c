@@ -142,7 +142,7 @@ struct mpi_conn_info *mpi_conn_arr;
 
 void mpi_conn_release_items(struct mpi_conn_info *c);
 
-void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr);
+void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size);
 
 static enum try_read_result mpi_try_read_network(struct mpi_conn_info* client);
 
@@ -170,7 +170,7 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 static void mpi_conn_close(struct mpi_conn_info *c);
 
-static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr);
+static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr);
 
 
 #endif
@@ -5249,27 +5249,29 @@ void mpi_conn_release_items(struct mpi_conn_info *c) {
     printf("memcached/memcached.c :: mpi_conn_release_items () 6\n");
 }
 
-void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr){
+void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
     printf("memcached/memcached.c :: mpi_conn_init()\n");
-    mpi_conn_arr[1].rank = 1;
-    mpi_conn_arr[1].state = conn_listening;
-    mpi_conn_arr[1].rsize = READ_BUFFER_SIZE; //16kb
-    //mpi_conn_arr[1].rbuf = (char *)malloc((size_t)mpi_conn_arr[1].rsize);
-    mpi_conn_arr[1].rbuf = NULL;
-    mpi_conn_arr[1].rcurr = mpi_conn_arr[1].rbuf;
-    mpi_conn_arr[1].rbytes = 0;
-    mpi_conn_arr[1].thread = calloc(1, sizeof(LIBEVENT_THREAD));
-    mpi_conn_arr[1].item = NULL;
-    mpi_conn_arr[1].resps_suspended = 0;
-    mpi_conn_arr[1].resp=0;
-    mpi_conn_arr[1].resp_head=0;
-    mpi_conn_arr[1].cmd = -1;
-    mpi_conn_arr[1].rbuf_malloced = false;
-    mpi_conn_arr[1].item_malloced = false;
-    mpi_conn_arr[1].set_stale = false;
-    mpi_conn_arr[1].mset_res = false;
-    mpi_conn_arr[1].close_after_write = false;
-    mpi_conn_arr[1].last_cmd_time = current_time;
+    for(int i=1; i<size; i++){ // mpi_conn_arr[0] == server로 일단 지정
+        mpi_conn_arr[i].rank = i;
+        mpi_conn_arr[i].state = conn_listening;
+        mpi_conn_arr[i].rsize = READ_BUFFER_SIZE; //16kb
+        mpi_conn_arr[i].rbuf = NULL;
+        mpi_conn_arr[i].rcurr = mpi_conn_arr[i].rbuf;
+        mpi_conn_arr[i].rbytes = 0;
+        mpi_conn_arr[i].thread = calloc(1, sizeof(LIBEVENT_THREAD));
+        mpi_conn_arr[i].item = NULL;
+        mpi_conn_arr[i].resps_suspended = 0;
+        mpi_conn_arr[i].resp=0;
+        mpi_conn_arr[i].resp_head=0;
+        mpi_conn_arr[i].cmd = -1;
+        mpi_conn_arr[i].rbuf_malloced = false;
+        mpi_conn_arr[i].item_malloced = false;
+        mpi_conn_arr[i].set_stale = false;
+        mpi_conn_arr[i].mset_res = false;
+        mpi_conn_arr[i].close_after_write = false;
+        mpi_conn_arr[i].last_cmd_time = current_time;
+    }
+
 
 }
 
@@ -5333,7 +5335,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         memset(c->rbuf, 0, avail);
         //MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
-        int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
@@ -5342,9 +5344,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
-
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-        printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s\n", c->rbuf);
+        int send_rank = mpi_recv_status.MPI_SOURCE;
+        printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s | 송신 랭크 : %d\n", c->rbuf, send_rank);
 
         if(res > 0){
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -5585,7 +5587,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
     assert (c != NULL);
 
     printf("memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송\n");
-    MPI_Send(mpi_send_buf, offset, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
+    MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, 0, MPI_COMM_WORLD);
     printf("\t offset : %zu\n", offset);
 
     if (offset >= 0) {
@@ -5683,9 +5685,9 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
     }
 }
 
-static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
+static void mpi_drive_machine(struct mpi_conn_info *client){
     printf("memcached/memcached.c :: mpi_drive_machine()\n");
-    struct mpi_conn_info* client = &mpi_conn_arr[1];
+    //struct mpi_conn_info *client = &mpi_conn_arr;
     enum try_read_result res;
     bool stop = false;
     const char *str;
@@ -5869,7 +5871,7 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
 
             /*  now try reading from the socket */
             //res = c->read(c, c->rbuf, c->rsize > c->sbytes ? c->sbytes : c->rsize);
-            res = try_read_network(client); //여기 들어감
+            res = mpi_try_read_network(client); //여기 들어감
             if (res > 0) {
                 pthread_mutex_lock(&client->thread->stats.mutex);
                 client->thread->stats.bytes_read += res;
@@ -5922,7 +5924,7 @@ static void mpi_drive_machine(struct mpi_conn_info* mpi_conn_arr){
             mpi_rbuf_release(client);
             
             client->state=conn_read;
-            // stop = true;
+            stop = true;
             break;
         case conn_write:
         case conn_mwrite:
@@ -6263,7 +6265,7 @@ int main (int argc, char **argv) {
     #if ENABLE_MPI_FUNCTIONS
         mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size);
 
-        mpi_conn_init(mpi_conn_arr);
+        mpi_conn_init(mpi_conn_arr, size);
 
         // mpi_conn_arr[1].rank = 1;
         // mpi_conn_arr[1].state = conn_read;
@@ -7806,17 +7808,28 @@ int main (int argc, char **argv) {
         #endif
 
         #if ENABLE_MPI_FUNCTIONS
-            //waiting_recv(); //5s 잠시 잠들기..
-            mpi_drive_machine(mpi_conn_arr);
+            int i=1;
+            while(true){
+                printf("********************************** memcached/memcached.c :: main() - call mpi_drive_machine [%d] **********************************\n", i);
+                mpi_drive_machine(&mpi_conn_arr[i]);
+                i++;
+                if(i==size){
+                    printf("memcached/memcached.c :: i == size\n");
+                    i=1;
+                }
+            }
 
-            // char mpi_recv_buf[100];
-            // int mpi_res;
-            // MPI_Status mpi_recv_status;
-            // //memset(mpi_recv_buf, 0, avail);
-            // printf("MPI_Recv in main loop \n");
-            // MPI_Recv(mpi_recv_buf, 100, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-            // printf("memcached/memcached.c recv buf : %s | 송신 rank : %d\n", mpi_recv_buf, mpi_recv_status.MPI_SOURCE);
         #endif
+
+        //어떻게 할지 고민
+        //rank 0이 건냥이 되고, 1, 2는 다른 서버에 있다고 할 때, 
+        //read야 MPI_ANY_SOURCE를 할 수 있는데.. 흠 그러면 각 rank만큼의 워커 스레드를 만들어야하나?
+
+
+
+
+
+
     }
 
     printf("memcached/memcached.c :: main()-[14]-11\n");

@@ -1257,9 +1257,7 @@ void memcached_thread_init(int nthreads, void *arg) {
 void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state, int event_flags,
                        int read_buffer_size, enum network_transport transport,
                        uint64_t conntag, enum protocol bproto) {
-    if (settings.verbose) {
-        printf("[yedam] thread.c :: mpi_dispatch_conn_new(), c->item : %p\n", c->item);
-    }
+    printf("memcached/thread.c :: mpi_dispatch_conn_new(), c->item : %p\n", c->item);
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
 
@@ -1278,7 +1276,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
         return;
     }
     if (settings.verbose) {
-        printf("[yedam] thread.c :: mpi_dispatch_conn_new() 2\n");
+        printf("memcached/thread.c :: mpi_dispatch_conn_new() 2\n");
     }
     item->sfd = c->rank;
     item->init_state = init_state;
@@ -1298,7 +1296,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
 
 
     if (settings.verbose) {
-        printf("[yedam] thread.c :: mpi_dispatch_conn_new()3\n");
+        printf("memcached/thread.c :: mpi_dispatch_conn_new()3\n");
         printf("\t thread id : %d\n", thread->thread_id);
         printf("\t base : %d\n", thread->base);
         printf("\t cur_sfd : %d\n", thread->cur_sfd);
