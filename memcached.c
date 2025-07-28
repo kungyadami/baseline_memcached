@@ -136,6 +136,8 @@ enum transmit_result {
 
 #if ENABLE_MPI_FUNCTIONS
 
+void thread_func_for_mpi(void *c);
+
 bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c);
 
 struct mpi_conn_info *mpi_conn_arr;
@@ -171,6 +173,7 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 static void mpi_conn_close(struct mpi_conn_info *c);
 
 static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr);
+
 
 
 #endif
@@ -5104,10 +5107,15 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 
 #if ENABLE_MPI_FUNCTIONS
 
-/* Does a looped read to fill data chunks */
-/* TODO: restrict number of times this can loop.
- * Also, benchmark using readv's.
- */
+void thread_func_for_mpi(void *thread_arg){
+
+    struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
+    printf("memcached/memcached.c :: thread_func_for_mpi() [%d]\n", thread->tid);
+    while(true){
+        printf("********************************** memcached/memcached.c :: thread_func_for_mpi() [%d] - call mpi_drive_machine**********************************\n", thread->tid);
+        mpi_drive_machine(&thread->client);
+    }
+}
 
 bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c) {
     // Might as well start with x2 and work from there.
@@ -5337,10 +5345,15 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         if (err != MPI_SUCCESS) {
+            printf("memcached/memcached.c :: mpi_try_read_network() MPI_Recv error 발생 \n");
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
             MPI_Error_string(err, err_str, &len);
             fprintf(stderr, "MPI_Recv error: %s\n", err_str);
+            fprintf(stderr, "MPI_SOURCE=%d, MPI_TAG=%d, MPI_ERROR=%d\n",
+            mpi_recv_status.MPI_SOURCE,
+            mpi_recv_status.MPI_TAG,
+            mpi_recv_status.MPI_ERROR);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
@@ -6259,7 +6272,14 @@ int main (int argc, char **argv) {
         //char processor_name[MPI_MAX_PROCESSOR_NAME];
         //int name_len;
 
-        MPI_Init(&argc, &argv); // 초기화
+        //MPI_Init(&argc, &argv); // 초기화
+        int mpi_provided;
+        MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_provided);
+
+        if (mpi_provided < MPI_THREAD_MULTIPLE) {
+            fprintf(stderr, "Error: MPI does not support THREAD_MULTIPLE\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
         MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
     #if ENABLE_MPI_FUNCTIONS
@@ -7792,44 +7812,41 @@ int main (int argc, char **argv) {
     if (settings.drop_privileges) {
         drop_privileges();
     }
-         printf("memcached/memcached.c :: main()-[14]-9\n");
+    printf("memcached/memcached.c :: main()-[14]-9\n");
     /* Initialize the uriencode lookup table. */
     uriencode_init();
      printf("memcached/memcached.c :: main()-[14]-10\n");
      //printf("memcached/memcached.c :: main(), libevent thread->open_bundle : %d\n", )
     /* enter the event loop */
     MPI_Barrier(MPI_COMM_WORLD);
+
+    /*yedam code*/
+    pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*size-1);
+    struct mpi_conn_thread *thread_args = (struct mpi_conn_thread*)malloc(sizeof(struct mpi_conn_thread)*size-1);
+    printf("memcached/memcached.c :: main() thread create, size : %d\n", size);
+    for(int i=0; i<size-1; i++){
+        printf("memcached/memcached.c :: main() thread create for, i = %d\n", i);
+        thread_args[i].tid=i+1;
+        thread_args[i].client=mpi_conn_arr[i+1];
+    }
+
+    for(int i=0; i<size-1; i++){
+        if(pthread_create(&threads[i], NULL, thread_func_for_mpi, &thread_args[i]) != 0){
+            perror("pthread_create");
+            //exit(0);
+        }
+    }
+
+    for(int i=0; i<size; i++){
+        pthread_join(threads[i], NULL);
+    }
+
+#if ENABLE_SOCKET_FUNCTIONS
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
-        #if ENABLE_SOCKET_FUNCTIONS
         if (event_base_loop(main_base, EVLOOP_ONCE) != 0) { //얘는 한번만 발생하는 루프
             retval = EXIT_FAILURE;
             break;
         }
-        #endif
-
-        #if ENABLE_MPI_FUNCTIONS
-            int i=1;
-            while(true){
-                printf("********************************** memcached/memcached.c :: main() - call mpi_drive_machine [%d] **********************************\n", i);
-                mpi_drive_machine(&mpi_conn_arr[i]);
-                i++;
-                if(i==size){
-                    printf("memcached/memcached.c :: i == size\n");
-                    i=1;
-                }
-            }
-
-        #endif
-
-        //어떻게 할지 고민
-        //rank 0이 건냥이 되고, 1, 2는 다른 서버에 있다고 할 때, 
-        //read야 MPI_ANY_SOURCE를 할 수 있는데.. 흠 그러면 각 rank만큼의 워커 스레드를 만들어야하나?
-
-
-
-
-
-
     }
 
     printf("memcached/memcached.c :: main()-[14]-11\n");
@@ -7857,6 +7874,7 @@ int main (int argc, char **argv) {
             restart_mmap_close();
         }
     }
+#endif
 
     /* remove the PID file if we're a daemon */
     if (do_daemonize)

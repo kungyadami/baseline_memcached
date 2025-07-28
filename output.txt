@@ -1,0 +1,726 @@
+memcached/memcached.c :: main()-[1]
+[memcached_example1.c] rank : 1 | size : 2
+memcached/memcached.c :: mpi_conn_init()
+memcached/memcached.c :: main()-[2]
+memcached/memcached.c :: main()-[3]
+memcached/memcached.c :: main()-[4]
+memcached/memcached.c :: main()-[5]
+memcached/memcached.c :: main()-[6]
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : ./memcached
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'v'
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : ./memcached
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'v'
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : ./memcached
+memcached/memcached.c :: int main - optarg : 10122
+memcached/memcached.c :: int main - optarg[0] : 1
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'p'
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : ./memcached
+memcached/memcached.c :: int main - optarg : 128
+memcached/memcached.c :: int main - optarg[0] : 1
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'm'
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : ./memcached
+memcached/memcached.c :: int main - optarg : 117.16.136.217
+memcached/memcached.c :: int main - optarg[0] : 1
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l'
+memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l' 3
+memcached/memcached.c :: main()-[7]
+memcached/memcached.c :: main()-[10-2]
+memcached/memcached.c -  :: stats_init()
+[yedam] assoc.c :: assoc_init()
+	 settings.verbose : 2
+memcached/memcached.c :: main()-[14]-1, slabs_init() call
+[yedam] slabs.c :: slabs_init()
+[yedam] slabs.c :: slabs_init()2
+[yedam] slabs.c :: slabs_init()3
+[yedam] slabs.c :: slabs_init()4
+[yedam] slabs.c :: slabs_init()5
+memcached/memcached.c :: main()-[14]-1, EXTSTORE
+memcached/memcached.c :: main()-[14]-2
+memcached/memcached.c :: main()-[15], prefill : 0
+memcached/memcached. memcached_thread_init is called in EXTSTORE Macro
+memcached/thread.c :: memcached_thread_init()
+memcached/thread.c :: setup_thread()
+memcached/thread.c :: setup_thread()3
+memcached/cache.c :: cache_create()
+memcached/thread.c :: setup_thread()4
+memcached/cache.c :: cache_create()
+memcached/cache.c :: cache_create()
+memcached/thread.c :: setup_thread()5
+	 thread id : 0
+	 base : 480133824
+	 cur_sfd : 0
+	 thread_baseid : 0
+	 conns_tosubmit : 0
+	 stats : 0
+	 rbuf_cache : 480134960
+	 open_bundle : 0
+	 io_cache : 480135056
+	 l : 0
+	 napi_id : 0
+memcached/thread.c :: create_worker()
+memcached/thread.c :: memcached_thread_init(), threads[0] id : 2033870400
+memcached/memcached. memcached_thread_init end
+memcached/memcached.c :: main()-[14]-4
+[yedam] assoc.c :: start_assoc_maintenance_thread()
+[yedam] assoc.c :: start_assoc_maintenance_thread()2
+[yedam] assoc.c :: assoc_maintenance_thread()
+memcached/memcached.c :: main()-[14]-5
+memcached/item.c :: lru_maintainer_thread()
+memcached/memcached.c :: main()-[14]-6
+memcached/memcached.c :: main()-[14]-6-1
+memcached/memcached.c :: main()-[14]-6-2
+memcached/memcached.c :: main()-[14]-6-4
+memcached/memcached.c :: main()-[14]-6-5
+memcached/memcached.c :: mpi_clock_handler()
+memcached/memcached.c :: clock_handler() 1
+memcached/memcached.c :: clock_handler() 3
+memcached/memcached.c :: clock_handler() - current_time 2 : 62
+memcached/memcached.c :: main()-[17] settings.socketpath : 0
+	 portnumber_filename : (null)
+memcached/memcached.c :: main()-[19], server_sockets call, port : 10122, tcp_transport : 1
+memcached/memcached.c :: main()-[14]-7
+memcached/memcached.c :: main()-[14]-8
+memcached/memcached.c :: main()-[14]-9
+memcached/memcached.c :: main()-[14]-10
+memcached/memcached.c :: main() thread create, size : 2
+memcached/memcached.c :: main() thread create for, i = 0
+libmemcached/string.cc - _init_string()
+[yedam] example2.c :: memcached set call
+libmemcached/storage.cc :: memcached_set()
+***memcached_set() parameters***
+key : key_0, key_length : 5
+value : value_0, value_length : 7
+libmemcached/storage.cc :: memcached_send()
+***memcached_send() parameters***
+group_key : key_0, group_key_length : 5
+key : key_0, key_length : 5
+value : value_0, value_length : 7
+libmemcached/hash.cc :: memcached_generate_hash_with_redistribution()
+libmemcached/memcached_generate_hash_with_redistribution hash value : 0
+storage.cc :: memcached_send() - flush : 1
+storage.cc :: memcached_send() - reply : 1 
+libmemcached/storage.cc :: memcached_send() call memcached_send_ascii()
+libmemcached/storage.cc :: memcached_send_ascii()1
+libmemcached/do.cc :: memcached_vdo()
+***memcached_instance_st member variables***
+instance's port : 10122
+instance's hostname : 117.16.136.217
+libmemcached/do.cc :: memcached_vdo() 2, rc : 0
+libmemcached/do.cc :: memcached_vdo() 4, rc : 0
+libmemcached/io.cc :: memcached_io_writev()
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : set 
+	 original_length : 4
+	 write_ptr : set ��������
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 139725432936272
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : key_0
+	 original_length : 5
+	 write_ptr : key_0���
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 4
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr :  0
+	 original_length : 2
+	 write_ptr :  0�
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 5
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr :  0
+	 original_length : 2
+	 write_ptr :  0
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 2
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr :  7
+	 original_length : 2
+	 write_ptr :  7
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 2
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : 
+
+	 original_length : 2
+	 write_ptr : 
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 2
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : value_0
+	 original_length : 7
+	 write_ptr : value_0
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 2
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : 
+
+	 original_length : 2
+	 write_ptr : 
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 7
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 5
+libmemcached/io.cc - memcached_io_write()
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : (null)
+libmemcached/io.cc :: _io_write - io_flush2
+libmemcached/io.cc - io_flush()
+write length 1 : 26
+write length 2 : 26
+libmemcached/통신그룹 내 rank 개수 : 2 | my rank : 1
+libmemcached/io.cc :: io_flush() is calling send() socket function
+libmemcached/io.cc :: io_flush() - local_write_ptr : set key_0 0 0 7
+value_0
+
+write length 3 : 26
+libmemcached/io.cc :: MPI_Send() 호출, write length 4 : 26
+libmemcached/io.cc :: MPI_Send() 완료
+mpi_sent_length : 26 | instance->io_bytes_sent : 26 | local_write_ptr :  | write_length : 0
+libmemcached/io.cc :: io_flush() return true;
+libmemcached/io.cc :: _io_write return, written : 2
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 7
+libmemcached/do.cc :: memcached_vdo() 5
+[yedam] common.h :: memcached_server_response_increment()
+libmemcached/do.cc :: memcached_vdo() 6, rc : 0
+libmemcached/storage.cc :: memcached_send_ascii() 4, rc : 0
+libmemcached/storage.cc :: memcached_send_ascii()5
+libmemcached/response.cc - memcached_response()2
+libmemcached/response.cc - memcached_response()2 _read_one_response call
+	 memcached_response()2 buffer : h�\
+libmemcached/response.cc - _read_one_response()
+libmemcached/response.cc - textual_read_one_response() call
+libmemcached/response.cc - textual_read_one_response()
+libmemcached/io.cc - memcached_io_readline()
+libmemcached/io.cc - memcached_io_readline()1
+libmemcached/io.cc :: memcached_io_read()
+libmemcached/io.cc :: memcached_io_read()1-1
+libmemcached/io.cc :: memcached_io_read()2
+libmemcached/io.cc :: memcached_io_read()3
+libmemcached/io.cc :: memcached_io_read()3-1
+libmemcached/io.cc :: _io_fill()
+libmemcached/io.cc :: _io_fill() recv
+memcached/memcached.c :: thread_func_for_mpi() [1]
+********************************** memcached/memcached.c :: thread_func_for_mpi() [1] - call mpi_drive_machine**********************************
+memcached/memcached.c :: mpi_drive_machine()
+memcached/memcached.c :: mpi_drive_machine - conn_listening
+memcached/memcached.c :: mpi_drive_machine - call mpi_dispatch_conn_new
+memcached/thread.c :: mpi_dispatch_conn_new(), c->item : (nil)
+memcached/thread.c :: cqi_new()
+memcached/cache.c :: cache_alloc()
+memcached/cache.c :: do_cache_alloc()
+memcached/cache.c :: do_cache_alloc()1
+memcached/cache.c :: do_cache_alloc()3
+memcached/cache.c :: do_cache_alloc(), cache->limit : 0 | cache->total : 0 |
+memcached/cache.c :: do_cache_alloc()3-1
+memcached/cache.c :: do_cache_alloc()6
+	 mpi_dispatch_conn_new - item : 0x7f0668000b70
+memcached/thread.c :: mpi_dispatch_conn_new() 2
+memcached/thread.c :: notify_worker()
+memcached/thread.c :: notify_worker()1
+memcached/thread.c :: mpi_dispatch_conn_new()3
+	 thread id : 2033870400
+	 base : 480133824
+	 cur_sfd : 0
+	 thread_baseid : 0
+	 conns_tosubmit : 0
+	 stats : 0
+	 rbuf_cache : 480134960
+	 open_bundle : 0
+	 io_cache : 480135056
+	 item : (nil)
+memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1
+memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : 0
+memcached/memcached.c :: mpi_reset_cmd_handler, else
+memcached/memcached.c :: mpi_drive_machine break
+memcached/memcached.c :: mpi_drive_machine - conn_waiting
+memcached/memcached.c :: mpi_rbuf_release
+********************************** memcached/memcached.c :: thread_func_for_mpi() [1] - call mpi_drive_machine**********************************
+memcached/memcached.c :: mpi_drive_machine()
+memcached/memcached.c :: mpi_drive_machine - conn_read
+memcached/memcached.c :: mpi_rbuf_alloc()
+memcached/cache.c :: do_cache_alloc()
+memcached/cache.c :: do_cache_alloc()1
+memcached/cache.c :: do_cache_alloc()3
+memcached/cache.c :: do_cache_alloc(), cache->limit : 0 | cache->total : 0 |
+memcached/cache.c :: do_cache_alloc()3-1
+memcached/cache.c :: do_cache_alloc()6
+	 c->rbuf : 1744833472
+memcached/mpi_try_read_network, client->rbytes : 0
+memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : set key_0 0 0 7
+value_0
+ | 송신 랭크 : 1
+memcached/memcached.c :: mpi_drive_machine - conn_parse_cmd
+memcached/proto_text.c :: mpi_try_read_command_ascii()
+memcached/proto_text.c :: mpi_process_command_ascii()
+memcached/memcached.c :: mpi_resp_start()
+memcached/memcached.c :: mpi_resp_allocate()
+memcached/memcached.c :: mpi_resp_allocate()3
+memcached/cache.c :: do_cache_alloc()
+memcached/cache.c :: do_cache_alloc()1
+memcached/cache.c :: do_cache_alloc()3
+memcached/cache.c :: do_cache_alloc(), cache->limit : 0 | cache->total : 1 |
+memcached/cache.c :: do_cache_alloc()3-1
+memcached/cache.c :: do_cache_alloc()6
+memcached/memcached.c :: mpi_resp_start()3
+memcached/memcached.c :: mpi_resp_start()4
+memcached/memcached.c :: mpi_resp_start()5
+memcached/proto_text.c :: tokenize_command
+memcached/proto_text.c :: tokenize_command, command : set key_0 0 0 7
+ntokens : 6
+memcached/proto_text.c :: mpi_process_update_command()
+memcached/proto_text.c :: mpi_process_update_command()-[2], vlen : 0
+memcached/proto_text.c :: set_noreply_maybe()
+memcached/proto_text.c :: mpi_process_update_command()-[3], vlen : 7
+memcached/memcached.c :: realtime 1
+memcached/proto_text.c :: mpi_process_update_command()-[4], exptime : 0
+memcached/- proto_text.c :: mpi_process_update_command()-[5]
+memcached/item.c :: do_item_alloc()
+	 key : key_0
+	 nkey : 5
+	 nbytes : 9
+	 exptime : 0
+memcached/items.c :: item_make_header
+	 nkey : 6
+	 nbytes : 9
+	 sizeof(item) : 48
+memcached/item.c :: do_item_alloc() - [2]
+	 ntotal : 63
+memcached/item.c :: do_item_alloc() - [4]
+	 ntotal : 71 | id : 1
+memcached/items.c :: do_item_alloc_pull
+memcached/item.c :: do_item_alloc() - [5]
+memcached/- proto_text.c :: process_update_command()-[8]
+memcached/- proto_text.c :: process_update_command()-[9]
+memcached/proto_text.c :: mpi_try_read_command_ascii() 3, c->rbytes : 9
+memcached/memcached.c :: mpi_drive_machine - conn_nread
+memcached/memcached.c :: mpi_drive_machine - conn_nread2
+memcached/memcached.c :: mpi_drive_machine - conn_nread3, tocopy: 9
+memcached/memcached.c :: mpi_drive_machine - conn_nread3-1
+memcached/memcached.c :: mpi_drive_machine - conn_nread
+memcached/memcached.c :: drive_machine - conn_nread, complete_nread
+memcached/proto_text.c :: mpi_complete_nread_ascii
+memcached/proto_text.c :: mpi_complete_nread_ascii 2
+memcached/proto_text.c :: mpi_complete_nread_ascii 9
+memcached/thread.c :: store_item
+memcached/memcached.c :: do_store_item(), it->time : 0
+[yedam] items.c :: do_item_get()
+[yedam] assoc.c :: assoc_find() - key : key_0, nkey : 5, hv : 1357352656
+[yedam] assoc.c :: assoc_find(), not expanding
+[yedam] assoc.c :: assoc_find(), not expanding 2
+[yedam] assoc.c :: assoc_find(), not expanding 3
+[yedam] assoc.c :: assoc_find() return 
+[yedam] items.c :: do_item_get() 2
+[yedam] items.c :: do_item_get() 5
+[yedam] items.c :: do_item_get() 10
+memcached/memcached.c :: do_store_item() - call do_item_link, it->time : 0
+memcached/items.c :: do_item_link() , it->time : 0
+memcached/items.c :: do_item_link()2 - it->time : 62 
+[yedam] items.c :: do_item_link()3
+[yedam] assoc.c :: assoc_insert()
+memcached/memcached.c :: do_store_item, STORED ITEM : key : key_0
+memcached/- proto_text.c :: mpi_complete_nread_ascii(), STORED
+memcached/memcached.c :: mpi_out_string()
+memcached/memcached.c :: mpi_out_string()1
+memcached/memcached.c :: resp_reset()
+memcached/memcached.c :: resp->item : 0
+memcached/memcached.c :: resp_reset()2
+memcached/memcached.c :: resp_reset()3
+memcached/memcached.c :: mpi_out_string()2
+memcached/memcached.c :: mpi_out_string()5
+memcached/memcached.c :: mpi_complete_nread_ascii() 13
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1
+memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : 1744849904
+memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head
+memcached/memcached.c :: mpi_drive_machine break
+memcached/memcached.c :: mpi_drive_machine - conn_write, conn_mwrite
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite1
+memcached/memcached.c :: mpi_sendmsg()
+memcached/memcached.c :: mpi_transmit_pre(), resp->wbuf : STORED
+
+memcached/memcached.c :: mpi_transmit_pre()1
+memcached/memcached.c :: mpi_transmit_pre()5-1
+memcached/memcached.c :: mpi_transmit_pre()6
+memcached/memcached.c :: mpi_transmit_pre()7, iovused : 1
+memcached/memcached.c :: mpi_sendmsg() 3msg_buf : STORED
+
+memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송
+	 offset : 8
+memcached/memcached.c :: mpi_sendmsg() call mpi_transmit_post()
+memcached/memcached.c :: mpi_transmit_post() 
+memcached/memcached.c :: mpi_transmit_post() 2, resp -> wbuf : STORED
+
+libmemcached/io.cc :: _io_fill() completed MPI_Recv, buf : 
+libmemcached/io.cc :: _io_fill() data read : 8 | instance->io_wait_count._bytes_read : 8
+libmemcached/io.cc :: _io_fill() return
+libmemcached/io.cc :: _io_fill() instance->read_buffer : STORED
+ 
+libmemcached/io.cc :: memcached_io_read()3-3
+libmemcached/io.cc :: memcached_io_read()5
+else - instance->read_buffer_length = 7
+else -  instance->read_ptr          = 0x5606a23acc69
+else - *read_ptr (first byte) = 0x54
+libmemcached/io.cc :: memcached_io_read() end
+libmemcached/io.cc - memcached_io_readline() 1-1, rc : 0
+libmemcached/io.cc - memcached_io_readline()2
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()4
+libmemcached/io.cc - memcached_io_readline()5
+libmemcached/io.cc - memcached_io_readline end
+memcached/memcached.c :: mpi_transmit_post() 4, res : 8 | resp->tosend : 8
+memcached/memcached.c :: mpi_resp_finish()
+memcached/memcached.c :: mpi_resp_finish() 6
+memcached/memcached.c :: mpi_resp_finish() 7
+memcached/memcached.c :: mpi_resp_finish() 8
+memcached/memcached.c :: resp_free()
+memcached/memcached.c :: mpi_transmit_post() 11
+memcached/memcached.c :: mpi_sendmsg() return TRANSMIT_COMPLETE
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite2libmemcached/response.cc - textual_read_one_response() rc : 0
+libmemcached/response.cc - textual_read_one_response buffer : STORED
+
+libmemcached/response.cc :: buffer is STORED
+libmemcached/response.cc - _read_one_response end
+Value stored successfully! key_0
+[yedam] example2.c :: memcached get call
+libmemcached/get.cc :: memcached_get()
+libmemcached/get.cc :: memcached_get_by_key()
+libmemcached/get.cc :: memcached_get_by_key(), query_id : 2
+libmemcached/get.cc - __mget_by_key_real()
+libmemcached/get.cc :: _mget_by_key_real memcached_server_count for문
+libmemcached/get.cc - __mget_by_key_real() memcached_generate_hash_with_redistribution call2
+libmemcached/hash.cc :: memcached_generate_hash_with_redistribution()
+libmemcached/memcached_generate_hash_with_redistribution hash value : 0
+libmemcached/get.cc - __mget_by_key_real() memcached_connect call
+libmemcached/get.cc - __mget_by_key_real() memcached_io_writev call
+libmemcached/io.cc :: memcached_io_writev()
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : get
+	 original_length : 3
+	 write_ptr : get key_0 0 0 7
+value_0
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 139725432938488
+
+memcached/memcached.c :: mpi_conn_release_items ()
+memcached/memcached.c :: mpi_conn_release_items () 6
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite4
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1
+memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : 0
+memcached/memcached.c :: mpi_reset_cmd_handler, else
+memcached/memcached.c :: mpi_drive_machine breaklibmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 7
+libmemcached/get.cc - __mget_by_key_real() 3
+libmemcached/get.cc - __mget_by_key_real() 4
+libmemcached/get.cc - __mget_by_key_real() memcached_io_writev call2
+libmemcached/io.cc :: memcached_io_writev()
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr :  
+	 original_length : 1
+	 write_ptr :  key_0 0 0 7
+value_0
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 139725432938704
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 2
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : key_0
+	 original_length : 5
+	 write_ptr : key_0 0 0 7
+value_0
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write return, written : 1
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc :: memcached_io_writev() 4
+libmemcached/io.cc :: memcached_io_writev() 7
+libmemcached/get.cc - __mget_by_key_real()2
+libmemcached/io.cc - memcached_io_write()2, written : 1
+libmemcached/io.cc :: _io_write() 
+	 buffer_ptr : 
+
+	 original_length : 2
+	 write_ptr : 
+ 0 7
+value_0
+
+	 buffer_ptr : 
+libmemcached/io.cc :: _io_write - io_flush2
+
+memcached/memcached.c :: mpi_drive_machine - conn_waiting
+memcached/memcached.c :: mpi_rbuf_release
+memcached/memcached.c :: mpi_rbuf_release1
+memcached/memcached.c :: mpi_rbuf_release3
+********************************** memcached/memcached.c :: thread_func_for_mpi() [1] - call mpi_drive_machine**********************************
+memcached/memcached.c :: mpi_drive_machine()
+memcached/memcached.c :: mpi_drive_machine - conn_readlibmemcached/io.cc - io_flush()
+write length 1 : 11
+write length 2 : 11
+libmemcached/통신그룹 내 rank 개수 : 2 | my rank : 1
+libmemcached/io.cc :: io_flush() is calling send() socket function
+libmemcached/io.cc :: io_flush() - local_write_ptr : get key_0
+ 0 7
+value_0
+
+write length 3 : 11
+libmemcached/io.cc :: MPI_Send() 호출, write length 4 : 11
+libmemcached/io.cc :: MPI_Send() 완료
+mpi_sent_length : 11 | instance->io_bytes_sent : 11 | local_write_ptr :  0 7
+value_0
+ | write_length : 0
+libmemcached/io.cc :: io_flush() return true;
+libmemcached/io.cc :: _io_write return, written : 1
+
+memcached/memcached.c :: mpi_rbuf_alloc()
+memcached/cache.c :: do_cache_alloc()
+memcached/cache.c :: do_cache_alloc()1
+memcached/cache.c :: do_cache_alloc()2
+memcached/cache.c :: do_cache_alloc()6
+	 c->rbuf : 1744833472
+memcached/mpi_try_read_network, client->rbytes : 0
+libmemcached/io.cc :: _io_write return 2
+libmemcached/io.cc - memcached_io_write() return ssize_t(written) : 2 
+libmemcached/get.cc - __mget_by_key_real() success_happened= true;
+libmemcached/get.cc - __mget_by_key_real() return MEMCACHED_SUCCESS
+libmemcached/get.cc :: memcached_fetch call()
+libmemcached/fetch.cc :: memcached_fetch()
+libmemcached/fetch.cc - memcached_fetch() :: memcached_fetch_result call
+libmemcached/fetch.cc - memcached_fetch_result()
+libmemcached/fetch.cc - memcached_fetch_result() memcached_io_get_readable_server call
+libmemcached/io.cc :: memcached_io_get_readable_server()
+libmemcached/fetch.cc - memcached_fetch_result() while statement
+libmemcached/response.cc - memcached_response()2
+libmemcached/response.cc - memcached_response()2 _read_one_response call
+	 memcached_response()2 buffer : 
+libmemcached/response.cc - _read_one_response()
+libmemcached/response.cc - textual_read_one_response() call
+libmemcached/response.cc - textual_read_one_response()
+libmemcached/io.cc - memcached_io_readline()
+libmemcached/io.cc - memcached_io_readline()1
+libmemcached/io.cc :: memcached_io_read()
+libmemcached/io.cc :: memcached_io_read()1-1
+libmemcached/io.cc :: memcached_io_read()2
+libmemcached/io.cc :: memcached_io_read()3
+libmemcached/io.cc :: memcached_io_read()3-1
+libmemcached/io.cc :: _io_fill()
+libmemcached/io.cc :: _io_fill() recv
+memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : get key_0
+ | 송신 랭크 : 1
+memcached/memcached.c :: mpi_drive_machine - conn_parse_cmd
+memcached/proto_text.c :: mpi_try_read_command_ascii()
+memcached/proto_text.c :: mpi_process_command_ascii()
+memcached/memcached.c :: mpi_resp_start()
+memcached/memcached.c :: mpi_resp_allocate()
+memcached/memcached.c :: mpi_resp_allocate()2
+memcached/memcached.c :: mpi_resp_allocate()3
+memcached/memcached.c :: mpi_resp_allocate()4
+memcached/memcached.c :: mpi_resp_start()3
+memcached/memcached.c :: mpi_resp_start()4
+memcached/memcached.c :: mpi_resp_start()5
+memcached/proto_text.c :: tokenize_command
+memcached/proto_text.c :: tokenize_command, command : get key_0
+ntokens : 3
+memcached/proto_text.c :: process_get_command() - get
+memcached/proto_text.c :: mpi_process_get_command
+memcached/proto_text.c :: mpi_process_get_command 2
+memcached/proto_text.c :: mpi_process_get_command() 4
+memcached/memcached.c :: limited_get()
+[yedam] thread.c :: item_get()
+[yedam] items.c :: do_item_get()
+[yedam] assoc.c :: assoc_find() - key : key_0, nkey : 5, hv : 1357352656
+[yedam] assoc.c :: assoc_find(), not expanding
+[yedam] assoc.c :: assoc_find(), not expanding 2
+[yedam] assoc.c :: assoc_find(), not expanding 3
+[yedam] assoc.c :: assoc_find(), while 1
+[yedam] assoc.c :: assoc_find(), key found successfully
+[yedam] assoc.c :: assoc_find() return 
+[yedam] items.c :: do_item_get() 2
+[yedam] items.c :: do_item_get() 3
+[yedam] items.c :: do_item_get() 5
+[yedam] items.c :: do_item_get() 6
+[yedam] items.c :: do_item_get() 9
+memcached/items.c :: do_item_bump()
+[yedam] items.c :: do_item_get() 10
+memcached/proto_text.c :: mpi_process_get_command 6
+memcached/proto_text.c :: make_ascii_get_suffix
+memcached/proto_text.c :: mpi_process_get_command() - EXTSTORE 
+memcached/proto_text.c :: mpi_process_get_command 7
+memcached/proto_text.c :: mpi_process_get_command 9
+memcached/proto_text.c :: mpi_process_get_command 15
+memcached/proto_text.c :: mpi_process_get_command 18
+memcached/proto_text.c :: mpi_try_read_command_ascii() 3, c->rbytes : 0
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1
+memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : 1744849904
+memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head
+memcached/memcached.c :: mpi_drive_machine break
+memcached/memcached.c :: mpi_drive_machine - conn_write, conn_mwrite
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite1
+memcached/memcached.c :: mpi_sendmsg()
+memcached/memcached.c :: mpi_transmit_pre(), resp->wbuf : VALUE key_0 0 7
+
+memcached/memcached.c :: mpi_transmit_pre()1
+memcached/memcached.c :: mpi_transmit_pre()5-1
+memcached/memcached.c :: mpi_transmit_pre()6
+memcached/memcached.c :: mpi_transmit_pre()7, iovused : 1
+memcached/memcached.c :: mpi_sendmsg() 3msg_buf : VALUE key_0 0 7
+value_0
+END
+
+memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송
+	 offset : 31
+memcached/memcached.c :: mpi_sendmsg() call mpi_transmit_post()
+memcached/memcached.c :: mpi_transmit_post() 
+memcached/memcached.c :: mpi_transmit_post() 2, resp -> wbuf : VALUE key_0 0 7
+
+memcached/memcached.c :: mpi_transmit_post() 4, res : 31 | resp->tosend : 31
+memcached/memcached.c :: mpi_resp_finish()libmemcached/io.cc :: _io_fill() completed MPI_Recv, buf : H��\
+libmemcached/io.cc :: _io_fill() data read : 31 | instance->io_wait_count._bytes_read : 39
+libmemcached/io.cc :: _io_fill() return
+libmemcached/io.cc :: _io_fill() instance->read_buffer : VALUE key_0 0 7
+value_0
+END
+ 
+libmemcached/io.cc :: memcached_io_read()3-3
+libmemcached/io.cc :: memcached_io_read()5
+else - instance->read_buffer_length = 30
+else -  instance->read_ptr          = 0x5606a23acc69
+else - *read_ptr (first byte) = 0x41
+libmemcached/io.cc :: memcached_io_read() end
+libmemcached/io.cc - memcached_io_readline() 1-1, rc : 0
+libmemcached/io.cc - memcached_io_readline()2
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()3
+
+memcached/memcached.c :: mpi_resp_finish() 1
+memcached/memcached.c :: mpi_resp_finish() 6
+memcached/memcached.c :: mpi_resp_finish() 7
+memcached/memcached.c :: mpi_resp_finish() 8
+memcached/memcached.c :: resp_free()
+memcached/memcached.c :: mpi_transmit_post() 11
+memcached/memcached.c :: mpi_sendmsg() return TRANSMIT_COMPLETE
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite2libmemcached/io.cc - memcached_io_readline()3
+libmemcached/io.cc - memcached_io_readline()4
+libmemcached/io.cc - memcached_io_readline()5
+libmemcached/io.cc - memcached_io_readline end
+libmemcached/response.cc - textual_read_one_response() rc : 0
+libmemcached/response.cc - textual_read_one_response buffer : VALUE key_0 0 7
+
+libmemcached/response.cc - buffer[0] is V
+[yedam] common.h :: memcached_server_response_increment()
+libmemcached/response.cc - textual_value_fetch()
+	 textual_value_fetch - key : 
+libmemcached/response.cc - textual_value_fetch()2
+libmemcached/response.cc - textual_value_fetch()3
+libmemcached/response.cc - textual_value_fetch()4
+libmemcached/response.cc - textual_value_fetch()5
+	 textual_value_fetch - value_ptr : A�\�V
+libmemcached/io.cc :: memcached_io_read()
+libmemcached/io.cc :: memcached_io_read()1-1
+libmemcached/io.cc :: memcached_io_read()2
+libmemcached/io.cc :: memcached_io_read()3
+libmemcached/io.cc :: memcached_io_read()3-3
+
+memcached/memcached.c :: mpi_conn_release_items ()
+memcached/memcached.c :: mpi_conn_release_items () 6
+memcached/memcached.c :: mpi_drive_machine, conn_mwrite4
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd
+memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1
+memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : 0
+memcached/memcached.c :: mpi_reset_cmd_handler, else
+memcached/memcached.c :: mpi_drive_machine breaklibmemcached/io.cc :: memcached_io_read()4
+if -  instance->read_buffer_length = 5
+if - instance->read_ptr          = 0x5606a23acc82
+if - *read_ptr (first byte) = 0x45
+libmemcached/io.cc :: memcached_io_read() end
+	 textual_value_fetch - char_ptr : value_0
+
+libmemcached/response.cc - textual_value_fetch() return
+libmemcached/response.cc - _read_one_response end
+libmemcached/string.cc - memcached_string_take_value()
+libmemcached/string.cc - _init_string()
+libmemcached/get.cc :: memcached_fetch end
+libmemcached/get.cc :: memcached_get_by_key end, value : value_0
+Retrieved value: value_0
+
+memcached/memcached.c :: mpi_drive_machine - conn_waiting
+memcached/memcached.c :: mpi_rbuf_release
+memcached/memcached.c :: mpi_rbuf_release1
+memcached/memcached.c :: mpi_rbuf_release3
+********************************** memcached/memcached.c :: thread_func_for_mpi() [1] - call mpi_drive_machine**********************************
+memcached/memcached.c :: mpi_drive_machine()
+memcached/memcached.c :: mpi_drive_machine - conn_read
+memcached/memcached.c :: mpi_rbuf_alloc()
+memcached/cache.c :: do_cache_alloc()
+memcached/cache.c :: do_cache_alloc()1
+memcached/cache.c :: do_cache_alloc()2
+memcached/cache.c :: do_cache_alloc()6
+	 c->rbuf : 1744833472
+memcached/mpi_try_read_network, client->rbytes : 0
+[mpiexec@konnyang] Sending Ctrl-C to processes as requested
+[mpiexec@konnyang] Press Ctrl-C again to force abort
+memcached/memcached.c :: sig_handler
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 55809 RUNNING AT konnyang
+=   EXIT CODE: 2
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+YOUR APPLICATION TERMINATED WITH THE EXIT STRING: Interrupt (signal 2)
+This typically refers to a problem with your application.
+Please see the FAQ page for debugging suggestions

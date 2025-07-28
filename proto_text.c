@@ -343,7 +343,7 @@ void complete_nread_ascii(conn *c) {
 static size_t tokenize_command(char *command, token_t *tokens, const size_t max_tokens) {
     printf("memcached/proto_text.c :: tokenize_command\n");
     printf("memcached/proto_text.c :: tokenize_command, command : %s\n", command);
-    printf("memcached/proto_text.c :: tokenize_command, max_tokens : %zu\n", max_tokens);
+    //printf("memcached/proto_text.c :: tokenize_command, max_tokens : %zu\n", max_tokens);
     char *s, *e;
     size_t ntokens = 0;
     assert(command != NULL && tokens != NULL && max_tokens > 1);
@@ -354,9 +354,9 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
     for (i = 0; i < len; i++) {
         if (*e == ' ') {
             if (s != e) {
-                printf("[%d]th tokenizing - *e is ' ' and s != e, e : %s\n",i, e);
+                //printf("[%d]th tokenizing - *e is ' ' and s != e, e : %s\n",i, e);
                 tokens[ntokens].value = s;
-                printf("[%d]th tokenizing - tokens value : %s\n", i, tokens[ntokens].value);
+                //printf("[%d]th tokenizing - tokens value : %s\n", i, tokens[ntokens].value);
                 tokens[ntokens].length = e - s;
                 ntokens++;
                 *e = '\0';
@@ -368,7 +368,7 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
             }
             s = e + 1;
         }
-        printf("[%d]th tokenizing - e++, e : %s\n",i, e);
+        //printf("[%d]th tokenizing - e++, e : %s\n",i, e);
         e++;
     }
 

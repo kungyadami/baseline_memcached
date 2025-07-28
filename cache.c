@@ -90,6 +90,7 @@ void* do_cache_alloc(cache_t *cache) {
          printf("memcached/cache.c :: do_cache_alloc(), cache->limit : %d | cache->total : %d |\n", cache->limit, cache->total);
         object = ret = malloc(cache->bufsize);
         if (ret != NULL) {
+            printf("memcached/cache.c :: do_cache_alloc()3-1\n");
             object = get_object(ret);
 
             cache->total++;

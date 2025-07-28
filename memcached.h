@@ -924,6 +924,7 @@ struct conn {
 
 
 #if ENABLE_MPI_FUNCTIONS
+
 struct mpi_conn_info{
     int  rank;      /** MPI Rank */
     enum conn_states  state;
@@ -979,6 +980,19 @@ struct mpi_conn_info{
     int keylen;
 
 };
+
+
+
+struct mpi_conn_thread{
+    int tid;
+    struct mpi_conn_info client;
+};
+
+
+
+
+
+
 
 #endif
 
