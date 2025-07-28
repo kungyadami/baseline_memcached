@@ -61,6 +61,8 @@
 #include <sys/sysctl.h>
 #endif
 
+#define BILLION 1000000000UL
+
 
 /*
  * forward declarations
@@ -6233,6 +6235,10 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 
 int main (int argc, char **argv) {
+// #if TIMECHECK
+//     struct timespec start, end;
+//     clock_gettime(CLOCK_REALTIME, &start);
+// #endif
     int c;
     bool lock_memory = false;
     bool do_daemonize = false;
