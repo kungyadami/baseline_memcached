@@ -16,7 +16,9 @@ int cache_error = 0;
 #endif
 
 cache_t* cache_create(const char *name, size_t bufsize, size_t align) {
+#if ENABLE_PRINT
     printf("memcached/cache.c :: cache_create()\n");
+#endif
     cache_t* ret = calloc(1, sizeof(cache_t));
     char* nm = strdup(name);
     if (ret == NULL || nm == NULL ||
@@ -66,7 +68,9 @@ void cache_destroy(cache_t *cache) {
 }
 
 void* cache_alloc(cache_t *cache) {
+#if ENABLE_PRINT
     printf("memcached/cache.c :: cache_alloc()\n");
+#endif
     void *ret;
     pthread_mutex_lock(&cache->mutex);
     ret = do_cache_alloc(cache);
@@ -75,34 +79,47 @@ void* cache_alloc(cache_t *cache) {
 }
 
 void* do_cache_alloc(cache_t *cache) {
+#if ENABLE_PRINT
     printf("memcached/cache.c :: do_cache_alloc()\n");
+#endif
     void *ret;
     void *object;
+#if ENABLE_PRINT
     printf("memcached/cache.c :: do_cache_alloc()1\n");
+#endif
     if (cache->freecurr > 0) {
+#if ENABLE_PRINT
         printf("memcached/cache.c :: do_cache_alloc()2\n");
+#endif
         ret = STAILQ_FIRST(&cache->head);
         STAILQ_REMOVE_HEAD(&cache->head, c_next);
         object = get_object(ret);
         cache->freecurr--;
     } else if (cache->limit == 0 || cache->total < cache->limit) { //여기
-         printf("memcached/cache.c :: do_cache_alloc()3\n");
-         printf("memcached/cache.c :: do_cache_alloc(), cache->limit : %d | cache->total : %d |\n", cache->limit, cache->total);
+#if ENABLE_PRINT
+         printf("memcached/cache.c :: do_cache_alloc()3, cache->limit : %d | cache->total : %d |\n", cache->limit, cache->total);
+#endif
         object = ret = malloc(cache->bufsize);
         if (ret != NULL) {
+#if ENABLE_PRINT
             printf("memcached/cache.c :: do_cache_alloc()3-1\n");
+#endif
             object = get_object(ret);
 
             cache->total++;
         }
     } else {
+#if ENABLE_PRINT
          printf("memcached/cache.c :: do_cache_alloc()4\n");
+#endif
         object = NULL;
     }
 
 #ifndef NDEBUG
     if (object != NULL) {
+#if ENABLE_PRINT
          printf("memcached/cache.c :: do_cache_alloc()5\n");
+#endif
         /* add a simple form of buffer-check */
         uint64_t *pre = ret;
         *pre = redzone_pattern;
@@ -111,7 +128,9 @@ void* do_cache_alloc(cache_t *cache) {
                &redzone_pattern, sizeof(redzone_pattern));
     }
 #endif  
+#if ENABLE_PRINT
      printf("memcached/cache.c :: do_cache_alloc()6\n"); //여기
+#endif
     return object;
 }
 

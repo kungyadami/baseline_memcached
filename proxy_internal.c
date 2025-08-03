@@ -139,7 +139,9 @@ static void _storage_get_item_cb(void *e, obj_io *eio, int ret) {
 // directly into there? item only necessary for recache.
 static int proxy_storage_get(LIBEVENT_THREAD *t, item *it, mc_resp *resp,
         int type) {
+#if ENABLE_PRINT
     printf("memcached/proxy_internal.c :: proxy_storage_get()\n");
+#endif
 #ifdef NEED_ALIGN
     item_hdr hdr;
     memcpy(&hdr, ITEM_data(it), sizeof(hdr));
@@ -373,7 +375,9 @@ static void process_update_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *re
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (comm == NREAD_SET) {
-            printf("[yedam] proxy_internal.c :: process_update_cmd()\n");
+#if ENABLE_PRINT
+            printf("memcached/proxy_internal.c :: process_update_cmd()\n");
+#endif
             it = item_get(key, nkey, t, DONT_UPDATE);
             if (it) {
                 item_unlink(it);
@@ -787,10 +791,14 @@ static void process_mget_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *resp
 
     bool overflow = false;
     if (!of.locked) {
-        printf("[yedam] proxy_internal.c :: process_mget_cmd()1\n");
+#if ENABLE_PRINT
+        printf("memcached/proxy_internal.c :: process_mget_cmd()1\n");
+#endif
         it = limited_get(key, nkey, t, 0, false, !of.no_update, &overflow);
     } else {
-        printf("[yedam] proxy_internal.c :: process_mget_cmd()2\n");
+#if ENABLE_PRINT
+        printf("memcached/proxy_internal.c :: process_mget_cmd()2\n");
+#endif
         // If we had to lock the item, we're doing our own bump later.
         it = limited_get_locked(key, nkey, t, DONT_UPDATE, &hv, &overflow);
     }
@@ -816,7 +824,9 @@ static void process_mget_cmd(LIBEVENT_THREAD *t, mcp_parser_t *pr, mc_resp *resp
             // I look forward to the day I get rid of this :)
             memcpy(ITEM_data(it), "\r\n", 2);
             // NOTE: This initializes the CAS value.
-            printf("[yedam] proxy_internal.c :: process_mget_cmd()\n");
+#if ENABLE_PRINT
+            printf("memcached/proxy_internal.c :: process_mget_cmd()\n");
+#endif
             do_item_link(it, hv, of.has_cas_in ? of.cas_id_in : get_cas_id());
             item_created = true;
         }

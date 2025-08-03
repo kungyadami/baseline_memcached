@@ -202,14 +202,18 @@ static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr);
 /* Default methods to read from/ write to a socket */
 ssize_t tcp_read(conn *c, void *buf, size_t count) {
     assert (c != NULL);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: tcp_read()\n");
+#endif
     return read(c->sfd, buf, count);
 }
 
     
 
 ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: tcp_sendmsg()\n");
+#endif
     assert (c != NULL);
 
     ssize_t sent = sendmsg(c->sfd, msg, flags);
@@ -217,9 +221,9 @@ ssize_t tcp_sendmsg(conn *c, struct msghdr *msg, int flags) {
 }
 
 ssize_t tcp_write(conn *c, void *buf, size_t count) {
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: tcp_write()\n");
-    }
+#endif
     assert (c != NULL);
     return write(c->sfd, buf, count);
 }
@@ -255,7 +259,9 @@ static void maxconns_handler(const evutil_socket_t fd, const short which, void *
  */
 rel_time_t realtime(const time_t exptime) {
     /* no. of seconds in 30 days - largest possible delta exptime */
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: realtime 1\n");
+#endif
     if (exptime == 0) return 0; /* 0 means never expire */
 
     if (exptime > REALTIME_MAXDELTA) {
@@ -266,19 +272,27 @@ rel_time_t realtime(const time_t exptime) {
            future, effectively making items expiring in the past
            really expiring never */
         if (exptime <= process_started){
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: realtime 2 return 1\n");
+#endif
             return (rel_time_t)1;
         }
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: realtime 3 return %d\n", exptime - process_started);
+#endif
         return (rel_time_t)(exptime - process_started);
     } else {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: realtime 4 return %d\n", exptime + current_time);
+#endif
         return (rel_time_t)(exptime + current_time);
     }
 }
 
 static void stats_init(void) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c -  :: stats_init()\n");
+#endif
     memset(&stats, 0, sizeof(struct stats));
     memset(&stats_state, 0, sizeof(struct stats_state));
     stats_state.accepting_conns = true; /* assuming we start in this state. */
@@ -477,15 +491,23 @@ int stop_conn_timeout_thread(void) {
  * read buffer cache helper functions
  */
 static void rbuf_release(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: rbuf_release\n");
+#endif
     if (c->rbuf != NULL && c->rbytes == 0 && !IS_UDP(c->transport)) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: rbuf_release1\n");
+#endif
         if (c->rbuf_malloced) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: rbuf_release2\n");
+#endif
             free(c->rbuf);
             c->rbuf_malloced = false;
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: rbuf_release3\n");
+#endif
             do_cache_free(c->thread->rbuf_cache, c->rbuf);
         }
         c->rsize = 0;
@@ -495,7 +517,9 @@ static void rbuf_release(conn *c) {
 }
 
 static bool rbuf_alloc(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: rbuf_alloc()\n");
+#endif
     if (c->rbuf == NULL) {
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
         if (!c->rbuf) {
@@ -553,7 +577,9 @@ bool rbuf_switch_to_malloc(conn *c) {
 static void conn_init(void) {
     //connection 배열을 초기화하는 코드라는데..
     /* We're unlikely to see an FD much higher than maxconns. */
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_init()\n");
+#endif
     int next_fd = dup(1);
     //1은 stdout(write, printf, puts..) 이라는 표준 출력 스트림인데,
     // 이걸 next_fd에 복제(근데 파일을 가리키는 건 같지만, 새로운 파일 디스크립터를 생성할 뿐임.
@@ -736,13 +762,19 @@ conn *conn_new(const int sfd, enum conn_states init_state,
                 struct event_base *base, void *ssl, uint64_t conntag,
                 enum protocol bproto) {
     conn *c;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_new()-[1]\n");
+#endif
     assert(sfd >= 0 && sfd < max_fds);
     c = conns[sfd];
-    printf("\t conn c is : %d\n", c);
+#if ENABLE_PRINT
+    printf("conn_new()- conn c is : %d\n", c);
+#endif
     
     if (NULL == c) { //c가 null이라서 여기 들어감
-        printf("\t conn c is NULL..\n");
+#if ENABLE_PRINT
+        printf("conn_new()- conn c is NULL..\n");
+#endif
         //conn 구조체의 객체 c를 할당한다. 성공해서 여기 조건문 안은 안 들어간다
         if (!(c = (conn *)calloc(1, sizeof(conn)))) {
             STATS_LOCK();
@@ -758,7 +790,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         c->rbuf = NULL; // 얘는 read 명령어 저장해주는 버퍼
 
         c->rsize = read_buffer_size;
-        printf("\t c->read buffer size : %d\n", c->rsize);
+#if ENABLE_PRINT
+        printf("conn_new()- c->read buffer size : %d\n", c->rsize);
+#endif
 
         // UDP connections use a persistent static buffer.
         if (c->rsize) {
@@ -793,14 +827,13 @@ conn *conn_new(const int sfd, enum conn_states init_state,
      * mode.  */
     if (!settings.socketpath) { //여기들어감
         c->request_addr_size = sizeof(c->request_addr); //왜 28이지?ㅋㅋㅋㅋㅋ
-        printf("\t c->request_addr_size : %d\n", c->request_addr_size);
     } else {
-        ////printf("memcached/memcached.c :: conn_new()-[5]\n");
         c->request_addr_size = 0;
     }
-
+#if ENABLE_PRINT
     printf("\t transport : %d | tcp_transport : %d\n", transport, tcp_transport);
     printf("\t init_state : %d | conn_new_cmd : %d\n", init_state, conn_new_cmd);
+#endif
     if (transport == tcp_transport && init_state == conn_new_cmd) {
         //여기 안들어감 왜? init_state가 conn_new_cmd랑 값이 다름
         //소켓이 연결된 상대방의 주소 정보를 가져오는 함수
@@ -814,7 +847,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         LOGGER_LOG(NULL, LOG_CONNEVENTS, LOGGER_CONNECTION_NEW, NULL,
                 &c->request_addr, c->request_addr_size, c->transport, 0, sfd);
     }
+#if ENABLE_PRINT
     printf("\t init_state : %d | c->protocol : %d\n", init_state, c->protocol);
+#endif
     //init state : 0
     //c->protocol : 5
     //if (settings.verbose > 1) {
@@ -823,32 +858,41 @@ conn *conn_new(const int sfd, enum conn_states init_state,
             //여기서 auto-negotiate 라는 걸 많이 출력하는데, 이건 자동으로 통신 방식, 설정을 맞춘다는 의미.
             //알아서 수신 대기 상태에 있는 소켓을 connection 배열에 넣어서, 연결 대기를 시킬 때 각종 네트워크 관련 설정을
             //알잘딱깔센으로 맞춰준다는 의미인듯?
-            printf(stderr, "<%d server listening (%s)\n", sfd, prot_text(c->protocol));
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d server listening (%s)\n", sfd, prot_text(c->protocol));
+#endif
         } else if (IS_UDP(transport)) {
-            printf(stderr, "<%d server listening (udp)\n", sfd);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d server listening (udp)\n", sfd);
+#endif
         } else if (c->protocol == negotiating_prot) {
-            printf(stderr, "<%d new auto-negotiating client connection\n", sfd);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d new auto-negotiating client connection\n", sfd);
+#endif
         } else if (c->protocol == ascii_prot) {
-            printf(stderr, "<%d new ascii client connection.\n", sfd);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d new ascii client connection.\n", sfd);
+#endif
         } else if (c->protocol == binary_prot) {
-            printf(stderr, "<%d new binary client connection.\n", sfd);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d new binary client connection.\n", sfd);
+#endif
 #ifdef PROXY
         } else if (c->protocol == proxy_prot) {
-            printf(stderr, "<%d new proxy client connection.\n", sfd);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d new proxy client connection.\n", sfd);
 #endif
+#endif
         } else {
-            printf(stderr, "<%d new unknown (%d) client connection\n", sfd, c->protocol);
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d new unknown (%d) client connection\n", sfd, c->protocol);
+#endif
             assert(false);
         }
     //}
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_new()-[9]\n");
+#endif
     c->state = init_state;
     c->rlbytes = 0;
     c->cmd = -1;
@@ -862,7 +906,6 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     c->mset_res = false;
     c->close_after_write = false;
     c->last_cmd_time = current_time; /* initialize for idle kicker */
-    printf("current_time : %d\n", current_time);
     assert(c->resps_suspended == 0);
 
     c->item = 0;
@@ -872,7 +915,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
 #endif
 
     c->noreply = false;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_new()-[10]\n");
+#endif
     if (ssl) {
         // musn't get here without ssl enabled.
         assert(settings.ssl_enabled);
@@ -891,43 +936,45 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     if (IS_UDP(transport)) {
         c->try_read_command = try_read_command_udp;
     } else {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: conn_new()-[11]\n");
+#endif
         switch (c->protocol) {
             case ascii_prot:
                 ////printf("memcached/memcached.c :: conn_new()-[11], ascii_prot\n");
                 if (settings.auth_file == NULL) {
                     c->authenticated = true;
-                    if (settings.verbose) {
-                        printf("memcached/memcached.c :: conn_new(), try_read_command_ascii\n");
-                    }
+#if ENABLE_PRINT
+                    printf("memcached/memcached.c :: conn_new(), try_read_command_ascii\n");
+#endif
                     c->try_read_command = try_read_command_ascii;
                 } else {
                     c->authenticated = false;
-                    if (settings.verbose) {
+#if ENABLE_PRINT
                         printf("memcached/memcached.c :: conn_new(), try_read_command_asciiauth\n");
-                    }
+#endif
                     c->try_read_command = try_read_command_asciiauth;
                 }
                 break;
             case binary_prot:
                 // binprot handles its own authentication via SASL parsing.
                 c->authenticated = false;
-                if (settings.verbose) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: conn_new(), try_read_command_binary\n");
-                }
+#endif
                 c->try_read_command = try_read_command_binary;
                 break;
             case negotiating_prot: //여기 실행됨
-                if (settings.verbose) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: conn_new(), try_read_command_negotiate\n");
-                }
+#endif
                 c->try_read_command = try_read_command_negotiate; 
                 break;
 #ifdef PROXY
             case proxy_prot:
-                if (settings.verbose) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: conn_new(), try_read_command_proxy\n");
-                }
+#endif
                 c->try_read_command = try_read_command_proxy;
                 break;
 #endif
@@ -947,9 +994,10 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     /*yedam start*/
     int fd = event_get_fd(&c->event);
     short flags = event_get_events(&c->event);
-
+#if ENABLE_PRINT
     printf("\t event fd = %d\n", fd);
     printf("\t event flags = 0x%x\n", flags);
+#endif
     /*yedam end*/
 
     if (event_add(&c->event, 0) == -1) {
@@ -957,31 +1005,44 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         perror("event_add");
         return NULL;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_new()-[13]\n"); 
+#endif
     STATS_LOCK();
     stats_state.curr_conns++;
     stats.total_conns++;
     STATS_UNLOCK();
 
     MEMCACHED_CONN_ALLOCATE(c->sfd);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_new()-[14], return conn new(), sfd : %d\n", sfd);
+#endif
 
     return c;
 }
 
 void conn_release_items(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_release_items()\n");
+#endif
 
     assert(c != NULL);
 
     if (c->item) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: conn_release_items() 1\n");
+#endif
         if (c->item_malloced) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: conn_release_items() 2\n");
+#endif
             free(c->item);
             c->item_malloced = false;
         } else {
+
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: conn_release_items() 3\n");
+#endif
             item_remove(c->item);
         }
         c->item = 0;
@@ -989,11 +1050,15 @@ void conn_release_items(conn *c) {
 
     // Cull any unsent responses.
     if (c->resp_head) {
+#if ENABLE_PRINT        
         printf("memcached/memcached.c :: conn_release_items() 4\n");
+#endif        
         mc_resp *resp = c->resp_head;
         // r_f() handles the chain maintenance.
         while (resp) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: conn_release_items() 5\n");
+#endif
             // temporary by default. hide behind a debug flag in the future:
             // double free detection. Transmit loops can drop out early, but
             // here we could infinite loop.
@@ -1009,7 +1074,9 @@ void conn_release_items(conn *c) {
             resp = resp_finish(c, resp);
         }
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: conn_release_items() 6\n");
+#endif
 }
 
 static void conn_cleanup(conn *c) {
@@ -1158,14 +1225,21 @@ void conn_set_state(conn *c, enum conn_states state) {
  * response object helper functions
  */
 void resp_reset(mc_resp *resp) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_reset()\n");
     printf("memcached/memcached.c :: resp->item : %d\n", resp->item);
+#endif
     if (resp->item) {
+#if ENABLE_PRINT
          printf("memcached/memcached.c :: resp_reset()1\n");
+#endif
+
         item_remove(resp->item);
         resp->item = NULL;
     }
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: resp_reset()2\n");
+#endif
     if (resp->write_and_free) {
 #ifdef PROXY
         if (resp->proxy_res) {
@@ -1178,7 +1252,9 @@ void resp_reset(mc_resp *resp) {
         free(resp->write_and_free);
         resp->write_and_free = NULL;
     }
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: resp_reset()3\n");
+#endif
     resp->wbytes = 0;
     resp->tosend = 0;
     resp->iovcnt = 0;
@@ -1211,15 +1287,21 @@ void resp_add_chunked_iov(mc_resp *resp, const void *buf, int len) {
 // track a single memory limit for ephemeral connection buffers.
 // Fancy bit twiddling tricks are avoided to help keep this straightforward.
 static mc_resp* resp_allocate(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_allocate()\n");
+#endif
     LIBEVENT_THREAD *th = c->thread;
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
 
     if (b != NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_allocate()2\n");
+#endif
         for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: resp_allocate()3\n");
+#endif
             // loop around starting from the most likely to be free
             int x = (i + b->next_check) % MAX_RESP_PER_BUNDLE;
             if (b->r[x].free) {
@@ -1230,7 +1312,9 @@ static mc_resp* resp_allocate(conn *c) {
         }
 
         if (resp != NULL) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: resp_allocate()4\n");
+#endif
             b->refcount++;
             memset(resp, 0, sizeof(*resp));
             resp->free = false; // redundant, for clarity.
@@ -1249,7 +1333,9 @@ static mc_resp* resp_allocate(conn *c) {
     }
 
     if (resp == NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_allocate()5\n");
+#endif
         assert(th->open_bundle == NULL);
         b = do_cache_alloc(th->rbuf_cache);
         if (b) {
@@ -1277,7 +1363,9 @@ static mc_resp* resp_allocate(conn *c) {
 }
 
 void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_free()\n");
+#endif
     mc_resp_bundle *b = resp->bundle;
 
     resp->free = true;
@@ -1326,10 +1414,14 @@ void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
 }
 
 bool resp_start(conn *c) {
-    printf("memcached/memcached.c :: resp_start()\n");
+#if ENABLE_PRINT
+    printf("memcached/memcached.c :: resp_start()1\n");
+#endif
     mc_resp *resp = resp_allocate(c);
     if (!resp) {
-        printf("memcached/memcached.c :: resp_start()1\n");
+#if ENABLE_PRINT
+        printf("memcached/memcached.c :: resp_start()2\n");
+#endif
         THR_STATS_LOCK(c->thread);
         c->thread->stats.response_obj_oom++;
         THR_STATS_UNLOCK(c->thread);
@@ -1339,16 +1431,24 @@ bool resp_start(conn *c) {
     THR_STATS_LOCK(c->thread);
     c->thread->stats.response_obj_count++;
     THR_STATS_UNLOCK(c->thread);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_start()3\n");
+#endif
     if (!c->resp_head) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_start()4\n");
+#endif
         c->resp_head = resp;
     }
     if (!c->resp) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_start()5\n");
+#endif
         c->resp = resp;
     } else {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_start()6\n");
+#endif
         c->resp->next = resp;
         c->resp = resp;
     }
@@ -1388,19 +1488,24 @@ mc_resp *resp_start_unlinked(conn *c) {
 
 // returns next response in chain.
 mc_resp* resp_finish(conn *c, mc_resp *resp) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_finish()\n");
+#endif
     mc_resp *next = resp->next;
     if (resp->item) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_finish() 1\n");
+#endif
         // TODO: cache hash value in resp obj?
         item_remove(resp->item);
         resp->item = NULL;
     }
     if (resp->write_and_free) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_finish() 2\n");
+#endif
 #ifdef PROXY
         if (resp->proxy_res) {
-            printf("memcached/memcached.c :: resp_finish() 3\n");
             LIBEVENT_THREAD *t = resp->bundle->thread;
             pthread_mutex_lock(&t->proxy_limit_lock);
             t->proxy_buffer_memory_used -= resp->wbytes;
@@ -1410,7 +1515,9 @@ mc_resp* resp_finish(conn *c, mc_resp *resp) {
         free(resp->write_and_free);
     }
     if (resp->io_pending) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_finish() 5\n");
+#endif
         io_pending_t *io = resp->io_pending;
         // If we had a pending IO, tell it to internally clean up then return
         // the main object back to our thread cache.
@@ -1419,14 +1526,20 @@ mc_resp* resp_finish(conn *c, mc_resp *resp) {
         resp->io_pending = NULL;
     }
     if (c->resp_head == resp) { //여기
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_finish() 6\n");
+#endif
         c->resp_head = next;
     }
     if (c->resp == resp) { //여기
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: resp_finish() 7\n");
+#endif
         c->resp = NULL;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_finish() 8\n");
+#endif
     resp_free(c->thread, resp);
     return next;
 }
@@ -1437,20 +1550,28 @@ bool resp_has_stack(conn *c) {
 }
 
 void out_string(conn *c, const char *str) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: out_string()\n");
+#endif
     size_t len;
     assert(c != NULL);
     mc_resp *resp = c->resp;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: out_string()1\n");
+#endif
     // if response was original filled with something, but we're now writing
     // out an error or similar, have to reset the object first.
     // TODO: since this is often redundant with allocation, how many callers
     // are actually requiring it be reset? Can we fast test by just looking at
     // tosend and reset if nonzero?
     resp_reset(resp);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: out_string()2\n");
+#endif
     if (c->noreply) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: out_string()3\n");
+#endif
         // TODO: just invalidate the response since nothing's been attempted
         // to send yet?
         resp->skip = true;
@@ -1461,13 +1582,16 @@ void out_string(conn *c, const char *str) {
     }
 
     if (settings.verbose > 1)
+#if ENABLE_FPRINT
         fprintf(stderr, ">%d %s\n", c->sfd, str);
-
+#endif
     // Fill response object with static string.
 
     len = strlen(str);
     if ((len + 2) > WRITE_BUFFER_SIZE) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: out_string()4\n");
+#endif
         /* ought to be always enough. just fail for simplicity */
         str = "SERVER_ERROR output line too long";
         len = strlen(str);
@@ -1476,7 +1600,9 @@ void out_string(conn *c, const char *str) {
     memcpy(resp->wbuf, str, len);
     memcpy(resp->wbuf + len, "\r\n", 2);
     resp_add_iov(resp, resp->wbuf, len + 2);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: out_string()5\n");
+#endif
     conn_set_state(c, conn_new_cmd);
     return;
 }
@@ -1617,11 +1743,15 @@ void append_stats(const char *key, const uint16_t klen,
 }
 
 static void reset_cmd_handler(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c:: reset_cmd_handler start, c->resp_head : %d\n", c->resp_head);
+#endif
     c->cmd = -1;
     c->substate = bin_no_state;
     if (c->item != NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c:: reset_cmd_handler start c->item is not null\n");
+#endif
         // TODO: Any other way to get here?
         // SASL auth was mistakenly using it. Nothing else should?
         if (c->item_malloced) {
@@ -1634,13 +1764,19 @@ static void reset_cmd_handler(conn *c) {
     }
     //상황에 따라 다르게 들어감, 주로 resp_head 아니면 else에 들어감
     if (c->rbytes > 0) { //파싱할 데이터가 있을 때
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: reset_cmd_handler4, c->rbytes > 0\n");
+#endif
         conn_set_state(c, conn_parse_cmd);
     } else if (c->resp_head) { //보낼 메세지가 있을 때
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: reset_cmd_handler4, c->resp_head\n");
+#endif
         conn_set_state(c, conn_mwrite);
     } else { //아무것도 아닐 때
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: reset_cmd_handler4, else\n");
+#endif
         conn_set_state(c, conn_waiting);
     }
 }
@@ -1656,7 +1792,6 @@ static void complete_nread(conn *c) {
            || c->protocol == binary_prot);
 #endif
     if (c->protocol == ascii_prot) {
-        //printf("[yedam] - memcached.c :: complete_nread(), complete_nread_ascii() call\n");
         complete_nread_ascii(c);
     } else if (c->protocol == binary_prot) {
         complete_nread_binary(c);
@@ -1781,7 +1916,9 @@ static int _store_item_copy_data(int comm, item *old_it, item *new_it, item *add
 enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const uint32_t hv, int *nbytes, uint64_t *cas, uint64_t cas_in, bool cas_stale) {
     //여기 자체가 데이터를 저장하기 위해서 찾는 공간
     char *key = ITEM_key(it);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: do_store_item(), it->time : %d\n", it->time);
+#endif
     item *old_it = do_item_get(key, it->nkey, hv, t, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
 
@@ -1934,9 +2071,11 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) { //[yedam] 여기서 데이터 저장했다고 말해주는듯
-            printf("memcached/memcached.c :: do_store_item() - call do_item_link, it->time : %d\n", it->time);
             do_item_link(it, hv, cas_in);
+#if ENABLE_PRINT
+            printf("memcached/memcached.c :: do_store_item() - call do_item_link, it->time : %d\n", it->time);
             printf("memcached/memcached.c :: do_store_item, STORED ITEM : key : %s\n", key);
+#endif
             stored = STORED;
         }
     }
@@ -2421,7 +2560,9 @@ item* limited_get(const char *key, size_t nkey, LIBEVENT_THREAD *t, uint32_t exp
     if (should_touch) {
         it = item_touch(key, nkey, exptime, t);
     } else {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: limited_get()\n");
+#endif
         it = item_get(key, nkey, t, do_update); //여기서 thread.c -> item_get()으로 간다
     }
     if (it && it->refcount > IT_REFCOUNT_LIMIT) {
@@ -2472,9 +2613,9 @@ enum delta_result_type do_add_delta(LIBEVENT_THREAD *t, const char *key, const s
     uint64_t value;
     int res;
     item *it;
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: do_add_delta()\n");
-    }
+#endif
     it = do_item_get(key, nkey, hv, t, DONT_UPDATE);
     if (!it) {
         return DELTA_ITEM_NOT_FOUND;
@@ -2583,21 +2724,21 @@ static int try_read_command_negotiate(conn *c) {
     assert(c->protocol == negotiating_prot);
     assert(c->rcurr <= (c->rbuf + c->rsize));
     assert(c->rbytes > 0);
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: try_read_command_negotiate()\n");
-    }
+#endif
     if ((unsigned char)c->rbuf[0] == (unsigned char)PROTOCOL_BINARY_REQ) {
-        if (settings.verbose) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: try_read_command_negotiate()1\n");
-        }
+#endif
         c->protocol = binary_prot;
         c->try_read_command = try_read_command_binary;
     } else {
         // authentication doesn't work with negotiated protocol.
         c->protocol = ascii_prot;
-        if (settings.verbose) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: try_read_command_negotiate()2\n");
-        }
+#endif
         c->try_read_command = try_read_command_ascii;
     }
 
@@ -2672,7 +2813,9 @@ static enum try_read_result try_read_udp(conn *c) {
  * @return enum try_read_result
  */
 static enum try_read_result try_read_network(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: try_read_network()\n");
+#endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
     int num_allocs = 0;
@@ -2745,25 +2888,17 @@ static enum try_read_result try_read_network(conn *c) {
 
 static bool update_event(conn *c, const int new_flags) {
     assert(c != NULL);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: update_event()\n");
+#endif
 
     struct event_base *base = c->event.ev_base;
     if (c->ev_flags == new_flags)
         return true;
     if (event_del(&c->event) == -1) return false;
-    //printf("[yedam] - memcached.c :: update_event(), event_set() call (included event_handler function)\n");
     event_set(&c->event, c->sfd, new_flags, event_handler, (void *)c);
     event_base_set(base, &c->event);
     c->ev_flags = new_flags;
-
-    /*yedam start*/
-    int fd = event_get_fd(&c->event);
-    short flags = event_get_events(&c->event);
-    //event flag 값은 0x12가 나오는데, EV_READ : 2, EV_PERSIST : 10임.
-
-    // printf("\t event fd = %d\n", fd);
-    // printf("\t event flags = 0x%x\n", flags);
-    /*yedam end*/
 
     if (event_add(&c->event, 0) == -1) return false;
     return true;
@@ -2816,26 +2951,36 @@ void do_accept_new_conns(const bool do_accept) {
 #define TRANSMIT_ALL_RESP false
 static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp) {
     mc_resp *resp = c->resp_head;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: _transmit_pre() resp->wbuf : %s\n", resp->wbuf);
+#endif
 
     while (resp && iovused + resp->iovcnt < IOV_MAX-1) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: _transmit_pre()1\n");
+#endif
         if (resp->skip) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_pre()2\n");
+#endif
             // Don't actually unchain the resp obj here since it's singly-linked.
             // Just let the post function handle it linearly.
             resp = resp->next;
             continue;
         }
         if (resp->chunked_data_iov) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_pre()3\n");
+#endif
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
             item_chunk *ch = (item_chunk *)ITEM_schunk((item *)resp->iov[resp->chunked_data_iov].iov_base);
             int x;
             for (x = 0; x < resp->iovcnt; x++) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: _transmit_pre()3-1\n");
+#endif
                 // This iov is tracking how far we've copied so far.
                 if (x == resp->chunked_data_iov) {
                     int done = resp->chunked_total - resp->iov[x].iov_len;
@@ -2857,7 +3002,9 @@ static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp
                             done = 0;
                         }
                         iovs[iovused].iov_base = ch->data + skip;
+#if ENABLE_PRINT
                         printf("\t iovs[%d]->iov_base : %s\n",iovused, iovs[iovused].iov_base);
+#endif
                         // Stupid binary protocol makes this go negative.
                         iovs[iovused].iov_len = ch->used - skip > todo ? todo : ch->used - skip;
                         iovused++;
@@ -2865,22 +3012,31 @@ static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp
                         ch = ch->next;
                     }
                 } else {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: _transmit_pre()4\n");
+#endif
                     iovs[iovused].iov_base = resp->iov[x].iov_base;
                     iovs[iovused].iov_len = resp->iov[x].iov_len;
                     iovused++;
                 }
-                if (iovused >= IOV_MAX-1)
+                if (iovused >= IOV_MAX-1){
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: _transmit_pre()5\n");
+#endif
                     break;
+                }
             }
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_pre()5-1\n");
+#endif
             //여기 들어감
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: _transmit_pre()6\n");
+#endif
         // done looking at first response, walk down the chain.
         resp = resp->next;
         //printf("\t resp->wbuf2 : %s\n", resp->wbuf);
@@ -2888,7 +3044,9 @@ static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp
         if (one_resp)
             break;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: _transmit_pre()7, iovused : %d\n", iovused);
+#endif
     return iovused;
 }
 
@@ -2897,22 +3055,30 @@ static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp
  * Takes the connection and current result bytes.
  */
 static void _transmit_post(conn *c, ssize_t res) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: _transmit_post() \n");
+#endif
     // We've written some of the data. Remove the completed
     // responses from the list of pending writes.
     mc_resp *resp = c->resp_head;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: _transmit_post() 2, resp -> wbuf : %s\n", resp->wbuf);
+#endif
     while (resp) {
         int x;
         if (resp->skip) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_post() 3\n");
+#endif
             resp = resp_finish(c, resp);
             continue;
         }
 
         // fastpath check. all small responses should cut here.
         if (res >= resp->tosend) { //여기 들어감
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_post() 4, res : %d | resp->tosend : %d\n", res, resp->tosend);
+#endif
             res -= resp->tosend;
             resp = resp_finish(c, resp);
             continue;
@@ -2920,21 +3086,29 @@ static void _transmit_post(conn *c, ssize_t res) {
 
         // it's fine to re-check iov's that were zeroed out before.
         for (x = 0; x < resp->iovcnt; x++) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_post() 5\n");
+#endif
             struct iovec *iov = &resp->iov[x];
             if (res >= iov->iov_len) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: _transmit_post() 6\n");
+#endif
                 resp->tosend -= iov->iov_len;
                 res -= iov->iov_len;
                 iov->iov_len = 0;
             } else {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: _transmit_post() 7\n");
+#endif
                 // Dumb special case for chunked items. Currently tracking
                 // where to inject the chunked item via iov_base.
                 // Extra not-great since chunked items can't be the first
                 // index, so we have to check for non-zero c_d_iov first.
                 if (!resp->chunked_data_iov || x != resp->chunked_data_iov) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: _transmit_post() 8\n");
+#endif
                     iov->iov_base = (char *)iov->iov_base + res;
                 }
                 iov->iov_len -= res;
@@ -2946,15 +3120,21 @@ static void _transmit_post(conn *c, ssize_t res) {
 
         // are we done with this response object?
         if (resp->tosend == 0) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_post() 9\n");
+#endif
             resp = resp_finish(c, resp);
         } else {
             // Jammed up here. This is the new head.
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_post() 10\n");
+#endif
             break;
         }
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: _transmit_post() 11\n");
+#endif
 }
 
 /*
@@ -2972,9 +3152,9 @@ static enum transmit_result transmit(conn *c) {
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
     struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
     int iovused = 0;
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: transmit() 1\n");
-    }
+#endif
 
     // init the msg.
     memset(&msg, 0, sizeof(struct msghdr));
@@ -2982,7 +3162,9 @@ static enum transmit_result transmit(conn *c) {
 
     iovused = _transmit_pre(c, iovs, iovused, TRANSMIT_ALL_RESP);
     if (iovused == 0) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: transmit, _transmit_pre 이후 iovused : %d\n", iovused);
+#endif
         // Avoid the syscall if we're only handling a noreply.
         // Return the response object.
         _transmit_post(c, 0);
@@ -2992,13 +3174,15 @@ static enum transmit_result transmit(conn *c) {
     // Alright, send.
     ssize_t res;
     msg.msg_iovlen = iovused;
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: transmit() 2\n");
-    }
+#endif
     
     res = c->sendmsg(c, &msg, 0);
     if (res >= 0) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: transmit(), res >= 0\n");
+#endif
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += res;
         pthread_mutex_unlock(&c->thread->stats.mutex);
@@ -3007,10 +3191,14 @@ static enum transmit_result transmit(conn *c) {
         _transmit_post(c, res);
 
         if (c->resp_head) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: transmit(), return TRANSMIT_INCOMPLETE\n");
+#endif
             return TRANSMIT_INCOMPLETE;
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: transmit(), TRANSMIT_COMPLETE\n");
+#endif
             return TRANSMIT_COMPLETE;
         }
     }
@@ -3181,7 +3369,9 @@ static int read_into_chunked_item(conn *c) {
     int total = 0;
     int res;
     assert(c->rcurr != c->ritem);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: read_into_chunked_item\n");
+#endif
     while (c->rlbytes > 0) {
         item_chunk *ch = (item_chunk *)c->ritem;
         if (ch->size == ch->used) {
@@ -3257,7 +3447,9 @@ static int read_into_chunked_item(conn *c) {
 }
 
 static void drive_machine(conn *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: drive_machine()\n");
+#endif
     bool stop = false;
     int sfd;
     socklen_t addrlen;
@@ -3276,7 +3468,9 @@ static void drive_machine(conn *c) {
     while (!stop) {
         switch(c->state) {
         case conn_listening:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_listening\n");
+#endif
             addrlen = sizeof(addr);
 #ifdef HAVE_ACCEPT4
             if (use_accept4) { //여기 들어감
@@ -3340,16 +3534,19 @@ static void drive_machine(conn *c) {
                     break;
                 }
                 //여기 호출됨
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - call dispatch_conn_new\n");
+#endif
                 dispatch_conn_new(sfd, conn_new_cmd, EV_READ | EV_PERSIST,
                                      READ_BUFFER_CACHED, c->transport, ssl_v, c->tag, c->protocol);
-                printf("memcached/memcached.c :: drive_machine - end dispatch_conn_new\n");
             }
             stop = true;
             break;
 
         case conn_waiting:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_waiting\n");
+#endif
             rbuf_release(c);
             if (!update_event(c, EV_READ | EV_PERSIST)) {
                 if (settings.verbose > 0)
@@ -3363,7 +3560,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_read:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_read\n");
+#endif
             if (!IS_UDP(c->transport)) { //여기로 들어감
                 // Assign a read buffer if necessary.
                 if (!rbuf_alloc(c)) { //여기는 안들어감
@@ -3394,7 +3593,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_parse_cmd:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_parse_cmd\n");    
+#endif
             c->noreply = false;
             if (c->try_read_command(c) == 0) {
                 /* we need more data! */
@@ -3409,24 +3610,34 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_new_cmd:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_new_cmd\n");
+#endif
             /* Only process nreqs at a time to avoid starving other
                connections */
             --nreqs;
             if (nreqs >= 0) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_new_cmd1\n");
+#endif
                 reset_cmd_handler(c); //여기로 들어감
             } else if (c->resp_head) { //여기 안들어감
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_new_cmd2\n");
+#endif
                 // flush response pipe on yield.
                 conn_set_state(c, conn_mwrite);
             } else { //여기 안들어감
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_new_cmd3\n");
+#endif
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 c->thread->stats.conn_yields++;
                 pthread_mutex_unlock(&c->thread->stats.mutex);
                 if (c->rbytes > 0) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine - conn_new_cmd4\n");
+#endif
                     /* We have already read in data into the input buffer,
                        so libevent will most likely not signal read events
                        on the socket (unless more data is available. As a
@@ -3445,9 +3656,13 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_nread:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_nread\n");
+#endif
             if (c->rlbytes == 0) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_nread, complete_nread\n");
+#endif
                 complete_nread(c);
                 break;
             }
@@ -3463,18 +3678,26 @@ static void drive_machine(conn *c) {
 
             if (c->item_malloced || ((((item *)c->item)->it_flags & ITEM_CHUNKED) == 0) ) {
                 /* first check if we have leftovers in the conn_read buffer */
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_nread2\n");
+#endif
                 if (c->rbytes > 0) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine - conn_nread3\n");
+#endif
                     int tocopy = c->rbytes > c->rlbytes ? c->rlbytes : c->rbytes;
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine - conn_nread3, tocopy: %d\n", tocopy);
+#endif
                     memmove(c->ritem, c->rcurr, tocopy);
                     c->ritem += tocopy;
                     c->rlbytes -= tocopy;
                     c->rcurr += tocopy;
                     c->rbytes -= tocopy;
                     if (c->rlbytes == 0) {
+#if ENABLE_PRINT
                         printf("memcached/memcached.c :: drive_machine - conn_nread3-1\n");
+#endif
                         break;
                     }
                 }
@@ -3482,7 +3705,9 @@ static void drive_machine(conn *c) {
                 /*  now try reading from the socket */
                 res = c->read(c, c->ritem, c->rlbytes);
                 if (res > 0) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine - conn_nread5\n");
+#endif
                     pthread_mutex_lock(&c->thread->stats.mutex);
                     c->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&c->thread->stats.mutex);
@@ -3494,9 +3719,9 @@ static void drive_machine(conn *c) {
                     break;
                 }
             } else {
-                if (settings.verbose) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine - conn_nread6\n");
-                }
+#endif
                 res = read_into_chunked_item(c);
                 if (res > 0)
                     break;
@@ -3544,7 +3769,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_swallow:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_swallow\n");
+#endif
             /* we are reading sbytes and throwing them away */
             if (c->sbytes <= 0) {
                 conn_set_state(c, conn_new_cmd);
@@ -3592,7 +3819,9 @@ static void drive_machine(conn *c) {
 
         case conn_write:
         case conn_mwrite:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_write, conn_mwrite\n");
+#endif
             /* have side IO's that must process before transmit() can run.
              * remove the connection from the worker thread and dispatch the
              * IO queue
@@ -3600,7 +3829,9 @@ static void drive_machine(conn *c) {
                 해당 연결을 워커 스레드에서 제거하고, I/O 큐로 디스패치한다.
              */
             if (c->resps_suspended) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine, conn_mwrite1\n");
+#endif
                 LIBEVENT_THREAD *t = c->thread;
                 // FIXME: carefully check or document somewhere that submit
                 // cannot resume a connection in-line with submission.
@@ -3613,11 +3844,16 @@ static void drive_machine(conn *c) {
                 stop = true;
                 break;
             }
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine, conn_mwrite1\n");
+#endif
             switch (!IS_UDP(c->transport) ? transmit(c) : transmit_udp(c)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (c->state == conn_mwrite) { //요기 들어감
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine, conn_mwrite2\n");
+#endif
+
                     // Free up IO wraps and any half-uploaded items.
                     conn_release_items(c);
                     conn_set_state(c, conn_new_cmd);
@@ -3625,12 +3861,16 @@ static void drive_machine(conn *c) {
                         conn_set_state(c, conn_closing);
                     }
                 } else {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: drive_machine, conn_mwrite3\n");
+#endif
                     if (settings.verbose > 0)
                         fprintf(stderr, "Unexpected state %d\n", c->state);
                     conn_set_state(c, conn_closing);
                 }
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine, conn_mwrite4\n");
+#endif
                 break;
 
             case TRANSMIT_INCOMPLETE:
@@ -3644,9 +3884,9 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_closing:
-            if (settings.verbose) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_closing\n");
-            }
+#endif
             if (IS_UDP(c->transport))
                 conn_cleanup(c);
             else
@@ -3655,36 +3895,40 @@ static void drive_machine(conn *c) {
             break;
 
         case conn_closed:
-            if (settings.verbose) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_closed\n");    
-            }
+#endif
             /* This only happens if dormando is an idiot. */
             abort();
             break;
 
         case conn_watch:
-            if (settings.verbose) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_watch\n");  
-            }  
+#endif
             /* We handed off our connection to the logger thread. */
             stop = true;
             break;
         case conn_io_queue:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_io_queue\n");   
+#endif
             /* Woke up while waiting for an async return, but not ready. */
             event_del(&c->event);
             conn_set_state(c, conn_io_pending);
             stop = true;
             break;
         case conn_io_pending:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: drive_machine - conn_io_pending\n");   
+#endif
             /* Should not be reachable */
             assert(false);
             break;
         case conn_io_resume:
-            if (settings.verbose) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_io_resume\n");   
-            }
+#endif
             /* Complete our queued IO's from within the worker thread. */
             conn_set_state(c, conn_mwrite);
             break;
@@ -3698,7 +3942,9 @@ static void drive_machine(conn *c) {
 }
 
 void event_handler(const evutil_socket_t fd, const short which, void *arg) {
+#if ENABLE_PRINT
     printf("memcached/memcached.cc :: event_handler() [1] \n");
+#endif
     conn *c;
 
     c = (conn *)arg;
@@ -3714,8 +3960,10 @@ void event_handler(const evutil_socket_t fd, const short which, void *arg) {
         return;
     }
     if(c->state == conn_new_cmd){
+#if ENABLE_PRINT
         printf("event hander c's state is conn_new_cmd\n");
         printf("memcached/memcached.c :: conn_new() c->thread->open_bundle : %d\n", c->thread->open_bundle);
+#endif
     }
     drive_machine(c);
 
@@ -3724,7 +3972,9 @@ void event_handler(const evutil_socket_t fd, const short which, void *arg) {
 }
 
 static int new_socket(struct addrinfo *ai) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: new_socket()-[1]\n");
+#endif
     int sfd;
     int flags;
     //ai family : IVP6, ai_socktype : TCP connection, 
@@ -3738,7 +3988,9 @@ static int new_socket(struct addrinfo *ai) {
         close(sfd);
         return -1;
     }
+#if ENABLE_PRINT
     printf("\t std : %d\n", sfd);
+#endif
     return sfd;
 }
 
@@ -3798,7 +4050,9 @@ static void maximize_sndbuf(const int sfd) {
  *                        해당 포트 번호를 기록할 파일 포인터
  */
 static int server_socket(const char *interface, int port, enum network_transport transport, FILE *portnumber_file, uint8_t ssl_enabled, uint64_t conntag, enum protocol bproto) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: server_socket()-[1]\n");
+#endif
     /*
     1. 여기서 주어지는 addrinfo 구조체의 변수를 가지고, 알기 쉬운 주소로 링크드 리스트 형태로 만들어줌(getaddrinfo)
     2. new socket을 통해 소켓 생성
@@ -3828,8 +4082,10 @@ static int server_socket(const char *interface, int port, enum network_transport
         port = 0;
     }
     snprintf(port_buf, sizeof(port_buf), "%d", port);
+#if ENABLE_PRINT
     printf("\t port_buf : %s\n", port_buf);
     printf("\t interface : %s\n", interface);
+#endif
     //여기 port_buf에는 내가 지정한 포트번호가 들어가있음
 
     //getaddrinfo는 netdb.h 헤더파일 안에 들어가있음
@@ -3841,20 +4097,16 @@ static int server_socket(const char *interface, int port, enum network_transport
     // 한 서버가 UDP/TCP/IPv4/IPv6 등등 여러 주소를 열 수도 있기 때문에 링크드 리스트로 ai_next가 있다!
 
     error= getaddrinfo(interface, port_buf, &hints, &ai);
+#if ENABLE_PRINT
     printf("\t addrinfo ai member variables \n");
     printf("\t ai->ai_flags : %d \n", ai->ai_flags);
     printf("\t ai->family : %d \n", ai->ai_family);
     printf("\t ai->socktype : %d \n", ai->ai_socktype);
     printf("\t ai->protocol : %d \n", ai->ai_protocol);
     printf("\t ai->addrlen : %zu \n", ai->ai_addrlen);
-    //printf("\t ai->addr : %s \n", *ai->ai_addr->sa_data);
-    printf("\t");
-    for (int i = 0; i < 14; i++) {
-        printf("%02x ", (unsigned char)ai->ai_addr->sa_data[i]);
-    }
-    printf("\n");
     printf("\t ai->canonname : %d \n", ai->ai_canonname);
-    //printf("\t ai->socktype : %d \n", ai->ai_socktype);
+#endif
+
 
 
     if (error != 0) {
@@ -3869,7 +4121,9 @@ static int server_socket(const char *interface, int port, enum network_transport
     //next라고 하는 변수가 null(즉, 링크드 리스트에서 가장 끝까지)이 될 때까지 new_socket을 생성
     //근데 어차피 우리는 지금 IPv6?였나 TCP 프로토콜 한 주소만 쓰고있어서, 그냥 한번만 돎 ..
     for (next= ai; next; next= next->ai_next) { 
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: server_socket()-[2]\n");
+#endif
         conn *listen_conn_add;
         if ((sfd = new_socket(next)) == -1) {// 오류가 생기진 않네 ..
             /* getaddrinfo can return "junk" addresses,
@@ -4013,7 +4267,9 @@ static int server_socket(const char *interface, int port, enum network_transport
                                   UDP_READ_BUFFER_SIZE, transport, NULL, conntag, bproto);
             }
         } else { //TCP protocol
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: server_socket()-[5] sfd : %d, transport : %d\n", sfd, transport);
+#endif
             if (!(listen_conn_add = conn_new(sfd, conn_listening,
                                              EV_READ | EV_PERSIST, 1,
                                              transport, main_base, NULL, conntag, bproto))) {
@@ -4047,7 +4303,9 @@ static int server_sockets(int port, enum network_transport transport,
     if (settings.ssl_enabled) {
         ssl_enabled = MC_SSL_ENABLED_DEFAULT;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: server_sockets()-[1]\n");
+#endif
 
     if (settings.inter == NULL) { //여기 들어감
         //printf("memcached/memcached.c :: server_sockets()-[1]\n");
@@ -4292,7 +4550,9 @@ static int server_socket_unix(const char *path, int access_mask) {
         close(sfd);
         return 1;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: server_socket_unix()-[1]\n"); //이거 진행 X
+#endif
     if (!(listen_conn = conn_new(sfd, conn_listening,
                                  EV_READ | EV_PERSIST, 1,
                                  local_transport, main_base, NULL, 0, settings.binding_protocol))) {
@@ -4330,7 +4590,9 @@ static int64_t monotonic_start;
  * Note that users who are setting explicit dates for expiration times *must*
  * ensure their clocks are correct before starting memcached. */
 static void clock_handler(const evutil_socket_t fd, const short which, void *arg) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: clock_handler()\n");
+#endif
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
     static bool initialized = false;
 
@@ -4343,13 +4605,17 @@ static void clock_handler(const evutil_socket_t fd, const short which, void *arg
 
     // While we're here, check for hash table expansion.
     // This function should be quick to avoid delaying the timer.
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: clock_handler() 1\n");
+#endif
     assoc_start_expand(stats_state.curr_items);
     // also, if HUP'ed we need to do some maintenance.
     // for now that's just the authfile reload.
     if (settings.sig_hup) {
         settings.sig_hup = false;
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() 2\n");
+#endif
         authfile_load(settings.auth_file);
 #ifdef PROXY
         if (settings.proxy_ctx) {
@@ -4357,7 +4623,9 @@ static void clock_handler(const evutil_socket_t fd, const short which, void *arg
         }
 #endif
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: clock_handler() 3\n");
+#endif
     evtimer_set(&clockevent, clock_handler, 0);
     event_base_set(main_base, &clockevent);
     evtimer_add(&clockevent, &t);
@@ -4372,10 +4640,14 @@ static void clock_handler(const evutil_socket_t fd, const short which, void *arg
             return;
 #ifdef MEMCACHED_DEBUG
         current_time = (rel_time_t) (ts.tv_sec - monotonic_start + delta);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 1 : %d\n", current_time);
+#endif
 #else
         current_time = (rel_time_t) (ts.tv_sec - monotonic_start);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 2 : %d\n", current_time);
+#endif
 #endif
         return;
     }
@@ -4385,10 +4657,14 @@ static void clock_handler(const evutil_socket_t fd, const short which, void *arg
         gettimeofday(&tv, NULL);
 #ifdef MEMCACHED_DEBUG
         current_time = (rel_time_t) (tv.tv_sec - process_started + delta);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 3 : %d\n", current_time);
+#endif
 #else
         current_time = (rel_time_t) (tv.tv_sec - process_started);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 4 : %d\n", current_time);
+#endif
 #endif
     }
 }
@@ -4663,17 +4939,23 @@ static void remove_pidfile(const char *pid_file) {
 }
 
 static void sig_handler(const int sig) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: sig_handler\n");
+#endif
     stop_main_loop = EXIT_NORMALLY;
 }
 
 static void sighup_handler(const int sig) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: sighup_handler\n");
+#endif
     settings.sig_hup = true;
 }
 
 static void sig_usrhandler(const int sig) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: sig_usrhandler\n");
+#endif
     stop_main_loop = GRACE_STOP;
 }
 
@@ -5112,9 +5394,13 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 void thread_func_for_mpi(void *thread_arg){
 
     struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: thread_func_for_mpi() [%d]\n", thread->tid);
+#endif
     while(true){
+#if ENABLE_PRINT
         printf("********************************** memcached/memcached.c :: thread_func_for_mpi() [%d] - call mpi_drive_machine**********************************\n", thread->tid);
+#endif
         mpi_drive_machine(&thread->client);
     }
 }
@@ -5141,7 +5427,9 @@ static int mpi_read_into_chunked_item(struct mpi_conn_info *c) {
     int total = 0;
     int res;
     assert(c->rcurr != c->ritem);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: read_into_chunked_item\n");
+#endif
     while (c->rlbytes > 0) {
         item_chunk *ch = (item_chunk *)c->ritem;
         if (ch->size == ch->used) {
@@ -5217,18 +5505,26 @@ static int mpi_read_into_chunked_item(struct mpi_conn_info *c) {
 }
 
 void mpi_conn_release_items(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_release_items ()\n");
+#endif
     //exit(0); //일단 이렇게 해두기
     assert(c != NULL);
 
     if (c->item) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_conn_release_items () 1\n");
+#endif
         if (c->item_malloced) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_conn_release_items () 2\n");
+#endif
             free(c->item);
             c->item_malloced = false;
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_conn_release_items () 3\n");
+#endif
             item_remove(c->item);
         }
         c->item = 0;
@@ -5236,11 +5532,15 @@ void mpi_conn_release_items(struct mpi_conn_info *c) {
 
     // Cull any unsent responses.
     if (c->resp_head) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_conn_release_items () 4\n");
+#endif
         mc_resp *resp = c->resp_head;
         // r_f() handles the chain maintenance.
         while (resp) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_conn_release_items () 5\n");
+#endif
             // temporary by default. hide behind a debug flag in the future:
             // double free detection. Transmit loops can drop out early, but
             // here we could infinite loop.
@@ -5256,11 +5556,15 @@ void mpi_conn_release_items(struct mpi_conn_info *c) {
             resp = resp_finish(c, resp);
         }
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_release_items () 6\n");
+#endif
 }
 
 void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_init()\n");
+#endif
     for(int i=1; i<size; i++){ // mpi_conn_arr[0] == server로 일단 지정
         mpi_conn_arr[i].rank = i;
         mpi_conn_arr[i].state = conn_listening;
@@ -5292,7 +5596,9 @@ static void mpi_conn_cleanup(struct mpi_conn_info *c) {
 
 
 static void mpi_conn_close(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_close()\n");
+#endif
     assert(c != NULL);
 
     if (c->thread) {
@@ -5328,7 +5634,9 @@ static void mpi_conn_close(struct mpi_conn_info *c) {
 }
 
 static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){ 
+#if ENABLE_PRINT
      printf("memcached/mpi_try_read_network, client->rbytes : %d\n",  c->rbytes);
+#endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
 
@@ -5347,7 +5655,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         if (err != MPI_SUCCESS) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_try_read_network() MPI_Recv error 발생 \n");
+#endif
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
             MPI_Error_string(err, err_str, &len);
@@ -5361,8 +5671,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
         int send_rank = mpi_recv_status.MPI_SOURCE;
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_try_read_network, MPI_Recv 종료, client->rbuf : %s | 송신 랭크 : %d\n", c->rbuf, send_rank);
-
+#endif
         if(res > 0){
             pthread_mutex_lock(&c->thread->stats.mutex);
             c->thread->stats.bytes_read += res;
@@ -5393,20 +5704,28 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 
 // returns next response in chain.
 mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_resp_finish()\n");
+#endif
     mc_resp *next = resp->next;
     if (resp->item) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_finish() 1\n");
+#endif
         // TODO: cache hash value in resp obj?
         item_remove(resp->item);
         resp->item = NULL;
     }
     if (resp->write_and_free) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_finish() 2\n");
+#endif
         free(resp->write_and_free);
     }
     if (resp->io_pending) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_finish() 5\n");
+#endif
         io_pending_t *io = resp->io_pending;
         // If we had a pending IO, tell it to internally clean up then return
         // the main object back to our thread cache.
@@ -5415,35 +5734,49 @@ mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
         resp->io_pending = NULL;
     }
     if (c->resp_head == resp) { //여기
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_finish() 6\n");
+#endif
         c->resp_head = next;
     }
     if (c->resp == resp) { //여기
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_finish() 7\n");
+#endif
         c->resp = NULL;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_resp_finish() 8\n");
+#endif
     resp_free(c->thread, resp);
     return next;
 }
 
 static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_post() \n");
+#endif
     // We've written some of the data. Remove the completed
     // responses from the list of pending writes.
     mc_resp *resp = c->resp_head;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_post() 2, resp -> wbuf : %s\n", resp->wbuf);
+#endif
     while (resp) {
         int x;
         if (resp->skip) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_post() 3\n");
+#endif
             resp = mpi_resp_finish(c, resp);
             continue;
         }
 
         // fastpath check. all small responses should cut here.
         if (res >= resp->tosend) { //여기 들어감
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_post() 4, res : %d | resp->tosend : %d\n", res, resp->tosend);
+#endif
             res -= resp->tosend;
             resp = mpi_resp_finish(c, resp);
             continue;
@@ -5451,21 +5784,29 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
 
         // it's fine to re-check iov's that were zeroed out before.
         for (x = 0; x < resp->iovcnt; x++) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_post() 5\n");
+#endif
             struct iovec *iov = &resp->iov[x];
             if (res >= iov->iov_len) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_transmit_post() 6\n");
+#endif
                 resp->tosend -= iov->iov_len;
                 res -= iov->iov_len;
                 iov->iov_len = 0;
             } else {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_transmit_post() 7\n");
+#endif
                 // Dumb special case for chunked items. Currently tracking
                 // where to inject the chunked item via iov_base.
                 // Extra not-great since chunked items can't be the first
                 // index, so we have to check for non-zero c_d_iov first.
                 if (!resp->chunked_data_iov || x != resp->chunked_data_iov) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_transmit_post() 8\n");
+#endif
                     iov->iov_base = (char *)iov->iov_base + res;
                 }
                 iov->iov_len -= res;
@@ -5477,41 +5818,56 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
 
         // are we done with this response object?
         if (resp->tosend == 0) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_post() 9\n");
+#endif
             resp = mpi_resp_finish(c, resp);
         } else {
             // Jammed up here. This is the new head.
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_post() 10\n");
+#endif
             break;
         }
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_post() 11\n");
+#endif
 }
 
 
 static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused) {
     mc_resp *resp = c->resp_head;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_pre(), resp->wbuf : %s\n", resp->wbuf);
-
+#endif
 
     while (resp && iovused + resp->iovcnt < IOV_MAX-1) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_transmit_pre()1\n");
+#endif
         if (resp->skip) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_pre()2\n");
+#endif
             // Don't actually unchain the resp obj here since it's singly-linked.
             // Just let the post function handle it linearly.
             resp = resp->next;
             continue;
         }
         if (resp->chunked_data_iov) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_pre()3\n");
+#endif
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
             item_chunk *ch = (item_chunk *)ITEM_schunk((item *)resp->iov[resp->chunked_data_iov].iov_base);
             int x;
             for (x = 0; x < resp->iovcnt; x++) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_transmit_pre()3-1\n");
+#endif
                 // This iov is tracking how far we've copied so far.
                 if (x == resp->chunked_data_iov) {
                     int done = resp->chunked_total - resp->iov[x].iov_len;
@@ -5533,7 +5889,9 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
                             done = 0;
                         }
                         iovs[iovused].iov_base = ch->data + skip;
+#if ENABLE_PRINT
                         printf("\t iovs[%d]->iov_base : %s\n",iovused, iovs[iovused].iov_base);
+#endif
                         // Stupid binary protocol makes this go negative.
                         iovs[iovused].iov_len = ch->used - skip > todo ? todo : ch->used - skip;
                         iovused++;
@@ -5541,32 +5899,45 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
                         ch = ch->next;
                     }
                 } else {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_transmit_pre()4\n");
+#endif
                     iovs[iovused].iov_base = resp->iov[x].iov_base;
                     iovs[iovused].iov_len = resp->iov[x].iov_len;
                     iovused++;
                 }
-                if (iovused >= IOV_MAX-1)
+                if (iovused >= IOV_MAX-1){
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_transmit_pre()5\n");
+#endif
                     break;
+                }
             }
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_pre()5-1\n");
+#endif
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_transmit_pre()6\n");
+#endif
         // done looking at first response, walk down the chain.
         resp = resp->next;
         //printf("\t resp->wbuf2 : %s\n", resp->wbuf);
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_pre()7, iovused : %d\n");
+#endif
     return iovused;
 }
 
 
 ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_sendmsg()\n");
+#endif
     /*여기는 실제 transmit 함수 부분. 내가 그냥 conn_mwrite/conn_write 에서 바로 메세지를 보낼 수 있게 통합함.*/
 
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
@@ -5596,29 +5967,39 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
         memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
         offset +=iov->iov_len;
     }
-
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_sendmsg() 3msg_buf : %s\n", mpi_send_buf);
+#endif
 
     assert (c != NULL);
-
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송\n");
+#endif
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, 0, MPI_COMM_WORLD);
+#if ENABLE_PRINT
     printf("\t offset : %zu\n", offset);
+#endif
 
     if (offset >= 0) {
 
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += offset;
         pthread_mutex_unlock(&c->thread->stats.mutex);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_sendmsg() call mpi_transmit_post()\n");
+#endif
         // Decrement any partial IOV's and complete any finished resp's.
         mpi_transmit_post(c, offset);
 
         if (c->resp_head) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_sendmsg() return TRANSMIT_INCOMPLETE\n");
+#endif
             return TRANSMIT_INCOMPLETE;
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_sendmsg() return TRANSMIT_COMPLETE\n");
+#endif
             return TRANSMIT_COMPLETE;
         }
     }
@@ -5639,10 +6020,14 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
 }
 
 static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_rbuf_alloc()\n");
+#endif
     if (c->rbuf == NULL) {
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
+#if ENABLE_PRINT
         printf("\t c->rbuf : %d\n", c->rbuf);
+#endif
         if (!c->rbuf) {
             THR_STATS_LOCK(c->thread);
             c->thread->stats.read_buf_oom++;
@@ -5656,15 +6041,23 @@ static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
 }
 
 static void mpi_rbuf_release(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_rbuf_release\n");
+#endif
     if (c->rbuf != NULL && c->rbytes == 0) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_rbuf_release1\n");
+#endif
         if (c->rbuf_malloced) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_rbuf_release2\n");
+#endif
             free(c->rbuf);
             c->rbuf_malloced = false;
         } else {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_rbuf_release3\n");
+#endif
             do_cache_free(c->thread->rbuf_cache, c->rbuf);
         }
         c->rsize = 0;
@@ -5674,11 +6067,15 @@ static void mpi_rbuf_release(struct mpi_conn_info *c) {
 }
 
 static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c:: mpi_reset_cmd_handler, c->resp_head : %d\n", c->resp_head);
+#endif
     c->cmd = -1;
     c->substate = bin_no_state;
     if (c->item != NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c:: mpi_reset_cmd_handler start c->item is not null\n");
+#endif
         if (c->item_malloced) {
             free(c->item);
             c->item_malloced = false;
@@ -5689,19 +6086,27 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
     }
     //상황에 따라 다르게 들어감, 주로 resp_head 아니면 else에 들어감
     if (c->rbytes > 0) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->rbytes > 0\n");
+#endif
         c->state = conn_parse_cmd;
     } else if (c->resp_head) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head\n");
+#endif
         c->state = conn_mwrite;
     } else { //여기 들어감
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_reset_cmd_handler, else\n");
+#endif
         c->state = conn_waiting;
     }
 }
 
 static void mpi_drive_machine(struct mpi_conn_info *client){
-    printf("memcached/memcached.c :: mpi_drive_machine()\n");
+#if ENABLE_PRINT
+    printf("memcached/memcached.c :: mpi_drive_machine\n");
+#endif
     //struct mpi_conn_info *client = &mpi_conn_arr;
     enum try_read_result res;
     bool stop = false;
@@ -5710,7 +6115,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
     while(!stop){
         switch(client->state){
         case conn_listening:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_listening\n");
+#endif
             bool reject;
             if (settings.maxconns_fast) {
                 reject = client->rank >= settings.maxconns - 1;
@@ -5730,15 +6137,21 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             } else { //여기 들어감
                 // run accept routine if ssl is compiled + enabled
                 //여기 호출됨
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - call mpi_dispatch_conn_new\n");
+#endif
                 mpi_dispatch_conn_new(client, conn_new_cmd, EV_READ | EV_PERSIST,
                                     READ_BUFFER_CACHED, client->transport, client->tag, client->protocol);
                 client->state=conn_new_cmd;
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new\n");
+#endif
             }
             break;
         case conn_read:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_read\n");
+#endif
             if (!mpi_rbuf_alloc(client)) { //여기는 안들어감
                 client->state = conn_closing;
                 break;
@@ -5762,7 +6175,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             break;
          
         case conn_parse_cmd:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_parse_cmd\n");
+#endif
             client->noreply = false;
             if (mpi_try_read_command_ascii(client) == 0) {
                 /* we need more data! */
@@ -5776,9 +6191,13 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             break;
             
         case conn_nread:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_nread\n");
+#endif
             if (client->rlbytes == 0) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: drive_machine - conn_nread, complete_nread\n");
+#endif
                 mpi_complete_nread_ascii(client);
                 break;
             }
@@ -5794,17 +6213,23 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
 
             if (client->item_malloced || ((((item *)client->item)->it_flags & ITEM_CHUNKED) == 0) ) {
                 /* first check if we have leftovers in the conn_read buffer */
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_nread2\n");
+#endif
                 if (client->rbytes > 0) {
                     int tocopy = client->rbytes > client->rlbytes ? client->rlbytes : client->rbytes;
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_drive_machine - conn_nread3, tocopy: %d\n", tocopy);
+#endif
                     memmove(client->ritem, client->rcurr, tocopy);
                     client->ritem += tocopy;
                     client->rlbytes -= tocopy;
                     client->rcurr += tocopy;
                     client->rbytes -= tocopy;
                     if (client->rlbytes == 0) {
+#if ENABLE_PRINT
                         printf("memcached/memcached.c :: mpi_drive_machine - conn_nread3-1\n");
+#endif
                         break;
                     }
                 }
@@ -5812,7 +6237,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
                 /*  now try reading from the socket */
                 res = mpi_try_read_network(client);
                 if (res > 0) {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_drive_machine - conn_nread5\n");
+#endif
                     pthread_mutex_lock(&client->thread->stats.mutex);
                     client->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&client->thread->stats.mutex);
@@ -5824,7 +6251,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
                     break;
                 }
             } else {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - mpi_read_into_chunked_item\n");
+#endif
                 res = mpi_read_into_chunked_item(client);
                 if (res > 0)
                     break;
@@ -5868,7 +6297,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             client->state = conn_closing;
             break;
         case conn_swallow:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_swallow\n");
+#endif
             /* we are reading sbytes and throwing them away */
             if (client->sbytes <= 0) {
                 client->state = conn_new_cmd;
@@ -5910,32 +6341,46 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             client->state = conn_closing;
             break;
         case conn_new_cmd:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd\n");
+#endif
             --nreqs;
             if (nreqs >= 0) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd1\n");
+#endif
                 mpi_reset_cmd_handler(client); //여기로 들어감
             } else if (client->resp_head) { //여기 안들어감
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd2\n");
+#endif
                 // flush response pipe on yield.
                 client->state = conn_mwrite;
             } else { //여기 안들어감
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd3\n");
+#endif
                 pthread_mutex_lock(&client->thread->stats.mutex);
                 client->thread->stats.conn_yields++;
                 pthread_mutex_unlock(&client->thread->stats.mutex);
                 if (client->rbytes > 0) {
                     client->state = conn_closing;
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd4\n");
+#endif
 
                 }
                 stop = true;
             }
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine break\n");
+#endif
             break;
 
         case conn_waiting:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_waiting\n");  
+#endif
             mpi_rbuf_release(client);
             
             client->state=conn_read;
@@ -5943,10 +6388,10 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             break;
         case conn_write:
         case conn_mwrite:
-            printf("memcached/memcached.c :: mpi_drive_machine - conn_write, conn_mwrite\n");
-
             if (client->resps_suspended) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1\n");
+#endif
                 LIBEVENT_THREAD *t = client->thread;
                 // FIXME: carefully check or document somewhere that submit
                 // cannot resume a connection in-line with submission.
@@ -5960,24 +6405,34 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
                 stop = true;
                 break;
             }
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1\n");
+#endif
             switch (mpi_sendmsg(client)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (client->state == conn_mwrite) { //요기 들어감
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite2\n");
+#endif
+                    if(client->item)
                     // Free up IO wraps and any half-uploaded items.
                     mpi_conn_release_items(client);
+
                     client->state = conn_new_cmd;
                     if (client->close_after_write) {
                         client->state = conn_closing;
                     }
                 } else {
+#if ENABLE_PRINT
                     printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite3\n");
+#endif
                     if (settings.verbose > 0)
                         fprintf(stderr, "Unexpected state %d\n", client->state);
                     client->state = conn_closing;
                 }
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite4\n");
+#endif
                 break;
 
             case TRANSMIT_INCOMPLETE:
@@ -5990,46 +6445,63 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             }
             break;
         case conn_closing:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_closing\n");
+#endif
             conn_close(client);
             stop = true;
             break;
 
         case conn_closed:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_closed\n");    
+#endif
             /* This only happens if dormando is an idiot. */
             abort();
             break;
         case conn_io_queue:
-            printf("memcached/memcached.c :: mpi_drive_machine - conn_io_queue\n");    
+#if ENABLE_PRINT
+            printf("memcached/memcached.c :: mpi_drive_machine - conn_io_queue\n");  
+#endif  
             /* Woke up while waiting for an async return, but not ready. */
             client->state = conn_io_pending;
             stop = true;
             break;
         case conn_io_pending:
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_io_pending\n");   
+#endif
             /* Should not be reachable */
             assert(false);
             break;
         }
+    
     }
 }
 
 void mpi_out_string(struct mpi_conn_info *c, const char *str) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()\n");
+#endif
     size_t len;
     assert(c != NULL);
     mc_resp *resp = c->resp;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()1\n");
+#endif
     // if response was original filled with something, but we're now writing
     // out an error or similar, have to reset the object first.
     // TODO: since this is often redundant with allocation, how many callers
     // are actually requiring it be reset? Can we fast test by just looking at
     // tosend and reset if nonzero?
     resp_reset(resp);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()2\n");
+#endif
     if (c->noreply) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_out_string()3\n");
+#endif
         // TODO: just invalidate the response since nothing's been attempted
         // to send yet?
         resp->skip = true;
@@ -6041,13 +6513,16 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
     }
 
     if (settings.verbose > 1)
+#if ENABLE_FPRINT
         fprintf(stderr, ">%d %s\n", c->rank, str);
-
+#endif
     // Fill response object with static string.
 
     len = strlen(str);
     if ((len + 2) > WRITE_BUFFER_SIZE) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_out_string()4\n");
+#endif
         /* ought to be always enough. just fail for simplicity */
         str = "SERVER_ERROR output line too long";
         len = strlen(str);
@@ -6056,22 +6531,30 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
     memcpy(resp->wbuf, str, len);
     memcpy(resp->wbuf + len, "\r\n", 2);
     resp_add_iov(resp, resp->wbuf, len + 2);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()5\n");
+#endif
     c->state = conn_new_cmd;
     return;
 }
 
 static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_resp_allocate()\n");
+#endif
 
     LIBEVENT_THREAD *th = c->thread;
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
 
     if (b != NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_allocate()2\n");
+#endif
         for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_resp_allocate()3\n");
+#endif
             // loop around starting from the most likely to be free
             int x = (i + b->next_check) % MAX_RESP_PER_BUNDLE;
             if (b->r[x].free) {
@@ -6082,7 +6565,9 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
         }
 
         if (resp != NULL) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_resp_allocate()4\n");
+#endif
             b->refcount++;
             memset(resp, 0, sizeof(*resp));
             resp->free = false; // redundant, for clarity.
@@ -6100,7 +6585,9 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
         }
     }
     if (resp == NULL) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_allocate()3\n");
+#endif
         assert(th->open_bundle == NULL);
         b = do_cache_alloc(th->rbuf_cache);
         if (b) {
@@ -6128,10 +6615,14 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
 }
 
 bool mpi_resp_start(struct mpi_conn_info *c) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_resp_start()\n");
+#endif
     mc_resp *resp = mpi_resp_allocate(c);
     if (!resp) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()1\n");
+#endif
         THR_STATS_LOCK(c->thread);
         c->thread->stats.response_obj_oom++;
         THR_STATS_UNLOCK(c->thread);
@@ -6141,16 +6632,24 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
     THR_STATS_LOCK(c->thread);
     c->thread->stats.response_obj_count++;
     THR_STATS_UNLOCK(c->thread);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_resp_start()3\n");
+#endif
     if (!c->resp_head) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()4\n");
+#endif
         c->resp_head = resp;
     }
     if (!c->resp) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()5\n");
+#endif
         c->resp = resp;
     } else {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()6\n");
+#endif
         c->resp->next = resp;
         c->resp = resp;
     }
@@ -6160,21 +6659,26 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
 
 
 static void mpi_clock_handler(const evutil_socket_t fd, const short which, void *arg) {
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_clock_handler()\n");
+#endif
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
 
     // While we're here, check for hash table expansion.
     // This function should be quick to avoid delaying the timer.
-    printf("memcached/memcached.c :: clock_handler() 1\n");
     assoc_start_expand(stats_state.curr_items);
     // also, if HUP'ed we need to do some maintenance.
     // for now that's just the authfile reload.
     if (settings.sig_hup) {
         settings.sig_hup = false;
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() 2\n");
+#endif
         authfile_load(settings.auth_file);
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: clock_handler() 3\n");
+#endif
 
 #ifdef MEMCACHED_DEBUG
     if (is_paused) return;
@@ -6187,10 +6691,14 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
             return;
 #ifdef MEMCACHED_DEBUG
         current_time = (rel_time_t) (ts.tv_sec - monotonic_start + delta);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 1 : %d\n", current_time);
+#endif
 #else
         current_time = (rel_time_t) (ts.tv_sec - monotonic_start);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 2 : %d\n", current_time);
+#endif
 #endif
         return;
     }
@@ -6200,10 +6708,14 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
         gettimeofday(&tv, NULL);
 #ifdef MEMCACHED_DEBUG
         current_time = (rel_time_t) (tv.tv_sec - process_started + delta);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 3 : %d\n", current_time);
+#endif
 #else
         current_time = (rel_time_t) (tv.tv_sec - process_started);
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: clock_handler() - current_time 4 : %d\n", current_time);
+#endif
 #endif
     }
 }
@@ -6235,10 +6747,6 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 
 int main (int argc, char **argv) {
-// #if TIMECHECK
-//     struct timespec start, end;
-//     clock_gettime(CLOCK_REALTIME, &start);
-// #endif
     int c;
     bool lock_memory = false;
     bool do_daemonize = false;
@@ -6264,14 +6772,16 @@ int main (int argc, char **argv) {
     bool use_slab_sizes = false;
     char *slab_sizes_unparsed = NULL;
     bool slab_chunk_size_changed = false;
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[1]\n");
+#endif
     // struct for restart code. Initialized up here so we can curry
     // important settings to save or validate.
     struct _mc_meta_data *meta = malloc(sizeof(struct _mc_meta_data));
     meta->slab_config = NULL;
     char *subopts, *subopts_orig;
     char *subopts_value;
-
+#if ENABLE_MPI_FUNCTIONS
     //yedam
         int rank;
         int size;
@@ -6288,7 +6798,6 @@ int main (int argc, char **argv) {
         }
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
         MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
-    #if ENABLE_MPI_FUNCTIONS
         mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size);
 
         mpi_conn_init(mpi_conn_arr, size);
@@ -6298,7 +6807,9 @@ int main (int argc, char **argv) {
         //MPI_Get_processor_name(processor_name, &name_len);
 
     #endif
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[2]\n");
+#endif
     enum {
         MAXCONNS_FAST = 0,
         HASHPOWER_INIT,
@@ -6428,8 +6939,9 @@ int main (int argc, char **argv) {
 #endif
         NULL
     };
-
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[3]\n");
+#endif
     if (!sanitycheck()) { //안 들어감
         free(meta);
         return EX_OSERR;
@@ -6440,13 +6952,17 @@ int main (int argc, char **argv) {
     signal(SIGTERM, sig_handler);
     signal(SIGHUP, sighup_handler);
     signal(SIGUSR1, sig_usrhandler);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[4]\n");
+#endif
     /* init settings */
     settings_init(); //port 번호는 11211로, 최대 연결 개수는 1024개로 기본 워커 스레드는 4개 등등 기본적인 설정 초기화 진행하는 함수
     verify_default("hash_algorithm", hash_type == MURMUR3_HASH); //해시 알고리즘은 멀멀3 으로 진행
     void *storage = NULL;
 #ifdef EXTSTORE
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[5]\n");
+#endif
     void *storage_cf = storage_init_config(&settings); //들어감
     bool storage_enabled = false;
     if (storage_cf == NULL) {
@@ -6457,7 +6973,9 @@ int main (int argc, char **argv) {
 
     /* set stderr non-buffering (for running under, say, daemontools) */
     setbuf(stderr, NULL);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[6]\n");
+#endif
     char *shortopts =
           "a:"  /* access mask for unix socket */
           "A"   /* enable admin shutdown command */
@@ -6539,13 +7057,17 @@ int main (int argc, char **argv) {
     };
     int optindex;
     while (-1 != (c = getopt_long(argc, argv, shortopts, longopts, &optindex))) {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : %s\n", *argv);
+#endif
 #else
     while (-1 != (c = getopt(argc, argv, shortopts))) {
 #endif
         if (optarg) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: int main - optarg : %s\n", optarg);
             printf("memcached/memcached.c :: int main - optarg[0] : %c\n", optarg[0]);
+#endif
             while(isspace(optarg[0])) {
                 optarg++;
             }
@@ -6582,7 +7104,9 @@ int main (int argc, char **argv) {
             udp_specified = true;
             break;
         case 'p':
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'p'\n");
+#endif
             settings.port = atoi(optarg);
             tcp_specified = true;
             break;
@@ -6595,7 +7119,9 @@ int main (int argc, char **argv) {
 #endif /* #ifndef DISABLE_UNIX_SOCKET */
             break;
         case 'm':
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'm'\n");
+#endif
             settings.maxbytes = ((size_t)atoi(optarg)) * 1024 * 1024;
             break;
         case 'M':
@@ -6621,11 +7147,15 @@ int main (int argc, char **argv) {
             lock_memory = true;
             break;
         case 'v':
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'v'\n");
+#endif
             settings.verbose++;
             break;
         case 'l':
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l'\n");
+#endif
             if (settings.inter != NULL) { //여기 안들어감
                 if (strstr(settings.inter, optarg) != NULL) {
                     break;
@@ -6640,7 +7170,9 @@ int main (int argc, char **argv) {
                 free(settings.inter);
                 settings.inter = p;
             } else { //여기 들어감
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l' 3\n");
+#endif
                 settings.inter= strdup(optarg); //여기에 있는 settings.inter가 ip주소가 됨
             }
             break;
@@ -7203,7 +7735,9 @@ int main (int argc, char **argv) {
                     goto error;
                 }
 #else
+#if ENABLE_PRINT
                 printf("Illegal suboption \"%s\"\n", subopts_temp);
+#endif
                 goto error;
 #endif
             } // switch
@@ -7264,11 +7798,8 @@ int main (int argc, char **argv) {
         exit(EX_USAGE);
     }
 #ifdef EXTSTORE //들어감
-    printf("memcached/memcached.c :: main()-[7]\n");
     switch (storage_check_config(storage_cf)) { //근데 여기는 안들어감
-        printf("memcached/memcached.c :: main()-[8]\n");
         case 0:
-            printf("memcached/memcached.c :: main()-[8-1]\n");
             storage_enabled = true;
             break;
         case 1:
@@ -7320,7 +7851,9 @@ int main (int argc, char **argv) {
     if (settings.inter != NULL && strchr(settings.inter, ',')) { //여기 안들어감
         settings.num_threads_per_udp = 1;
     } else {                                                     //여기 들어감          
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: main()-[10-2]\n");
+#endif
         settings.num_threads_per_udp = settings.num_threads;
     }
 
@@ -7569,12 +8102,16 @@ int main (int argc, char **argv) {
         reuse_mem = false;
     }
 #endif
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-1, slabs_init() call\n");
+#endif
     slabs_init(settings.maxbytes, settings.factor, preallocate,
             use_slab_sizes ? slab_sizes : NULL, mem_base, reuse_mem);
     //printf("memcached/memcached.c :: main()-[14]-1, slabs_init() call end\n");
 #ifdef EXTSTORE
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-1, EXTSTORE\n");
+#endif
     if (storage_enabled) { //storage_enabled가 0이라 안들어감
         //printf("memcached/memcached.c :: main()-[14]-1, EXTSTORE 2\n");
         storage = storage_init(storage_cf);
@@ -7586,11 +8123,15 @@ int main (int argc, char **argv) {
         prefill = true;
     }
 #endif
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-2\n");
+#endif
     if (settings.drop_privileges) { //여기도 안 들어감
         setup_privilege_violations_handler();
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[15], prefill : %d\n", prefill);
+#endif
     if (prefill) //prefill도 0이라, 안들어감..
         slabs_prefill_global();
     /* In restartable mode and we've decided to issue a fixup on memory */
@@ -7621,9 +8162,10 @@ int main (int argc, char **argv) {
     }
 #endif
 #ifdef EXTSTORE
+#if ENABLE_PRINT
     printf("memcached/memcached. memcached_thread_init is called in EXTSTORE Macro\n");
+#endif
     memcached_thread_init(settings.num_threads, storage);
-    printf("memcached/memcached. memcached_thread_init end\n");
     init_lru_crawler(storage);
 #else
     memcached_thread_init(settings.num_threads, NULL);
@@ -7637,7 +8179,9 @@ int main (int argc, char **argv) {
         }
     }
 #endif
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-4\n");
+#endif
     if (start_assoc_maint && start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
     }
@@ -7663,7 +8207,9 @@ int main (int argc, char **argv) {
         free(meta);
         return 1;
     }
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-5\n");
+#endif
     if (settings.slab_reassign) {
         settings.slab_rebal = start_slab_maintenance_thread(storage);
         if (!settings.slab_rebal) {
@@ -7674,32 +8220,44 @@ int main (int argc, char **argv) {
     if (settings.idle_timeout && start_conn_timeout_thread() == -1) {
         exit(EXIT_FAILURE);
     }
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-6\n");
+#endif
     /* initialise clock event */
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
     {
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: main()-[14]-6-1\n");
+#endif
         struct timespec ts;
         if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+#if ENABLE_PRINT
             printf("memcached/memcached.c :: main()-[14]-6-2\n");
+#endif
             monotonic = true;
             monotonic_start = ts.tv_sec;
             // Monotonic clock needs special handling for restarts.
             // We get a start time at an arbitrary place, so we need to
             // restore the original time delta, which is always "now" - _start
             if (reuse_mem) {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: main()-[14]-6-3\n");
+#endif
                 // the running timespan at stop time + the time we think we
                 // were stopped.
                 monotonic_start -= meta->current_time + meta->time_delta;
             } else {
+#if ENABLE_PRINT
                 printf("memcached/memcached.c :: main()-[14]-6-4\n");
+#endif
                 monotonic_start -= ITEM_UPDATE_INTERVAL + 2;
             }
         }
     }
 #endif
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-6-5\n");
+#endif
 
 #if ENABLE_SOCKET_FUNCTIONS
     clock_handler(0, 0, 0);
@@ -7709,7 +8267,9 @@ int main (int argc, char **argv) {
 #endif
     //printf("memcached/memcached.c :: main()-[17]\n");
     /* create unix mode sockets after dropping privileges */
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[17] settings.socketpath : %d\n", settings.socketpath);
+#endif
     if (settings.socketpath != NULL) { //여기는 안들어감
         //printf("memcached/memcached.c :: main()-[18], settings.socketpath is not NULL\n");
         errno = 0;
@@ -7722,7 +8282,9 @@ int main (int argc, char **argv) {
     /* create the listening socket, bind it, and init */
     if (settings.socketpath == NULL) {
         const char *portnumber_filename = getenv("MEMCACHED_PORT_FILENAME");
+#if ENABLE_PRINT
         printf("\t portnumber_filename : %s\n", portnumber_filename);
+#endif
         ////printf("memcached/memcached.c :: main() - settings.socketpath==NULL\n portnumber_filename : %s\n", portnumber_filename);
         char *temp_portnumber_filename = NULL;
         size_t len;
@@ -7747,8 +8309,9 @@ int main (int argc, char **argv) {
         }
 
         errno = 0;
+#if ENABLE_PRINT
         printf("memcached/memcached.c :: main()-[19], server_sockets call, port : %d, tcp_transport : %d\n", settings.port, tcp_transport);
-
+#endif
         #if ENABLE_SOCKET_FUNCTIONS
         if (settings.port && server_sockets(settings.port, tcp_transport, portnumber_file)) {
             //printf("memcached/memcached.c :: main()-[19]-1\n");
@@ -7800,7 +8363,9 @@ int main (int argc, char **argv) {
         if (temp_portnumber_filename)
             free(temp_portnumber_filename);
     }
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-7\n");
+#endif
     /* Give the sockets a moment to open. I know this is dumb, but the error
      * is only an advisory.
      */
@@ -7813,25 +8378,34 @@ int main (int argc, char **argv) {
     if (pid_file != NULL) {
         save_pid(pid_file);
     }  
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-8\n");
+#endif
     /* Drop privileges no longer needed */
     if (settings.drop_privileges) {
         drop_privileges();
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-9\n");
+#endif
     /* Initialize the uriencode lookup table. */
     uriencode_init();
+#if ENABLE_PRINT
      printf("memcached/memcached.c :: main()-[14]-10\n");
+#endif
      //printf("memcached/memcached.c :: main(), libevent thread->open_bundle : %d\n", )
     /* enter the event loop */
     MPI_Barrier(MPI_COMM_WORLD);
 
     /*yedam code*/
+
+    
     pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*size-1);
     struct mpi_conn_thread *thread_args = (struct mpi_conn_thread*)malloc(sizeof(struct mpi_conn_thread)*size-1);
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main() thread create, size : %d\n", size);
+#endif
     for(int i=0; i<size-1; i++){
-        printf("memcached/memcached.c :: main() thread create for, i = %d\n", i);
         thread_args[i].tid=i+1;
         thread_args[i].client=mpi_conn_arr[i+1];
     }
@@ -7854,8 +8428,9 @@ int main (int argc, char **argv) {
             break;
         }
     }
-
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-11\n");
+#endif
     switch (stop_main_loop) {
         case GRACE_STOP:
             fprintf(stderr, "Gracefully stopping\n");
@@ -7873,7 +8448,9 @@ int main (int argc, char **argv) {
             fprintf(stderr, "Exiting on error\n");
         break;
     }
+#if ENABLE_PRINT
     printf("memcached/memcached.c :: main()-[14]-12\n");
+#endif
     if (stop_main_loop == GRACE_STOP) {
         stop_threads();
         if (settings.memory_file != NULL) {

@@ -193,7 +193,9 @@ unsigned int slabs_fixup(char *chunk, const int border) {
  * accordingly.
  */
 void slabs_init(const size_t limit, const double factor, const bool prealloc, const uint32_t *slab_sizes, void *mem_base_external, bool reuse_mem) {
+#if ENABLE_PRINT
     printf("[yedam] slabs.c :: slabs_init()\n");
+#endif
     int i = POWER_SMALLEST - 1;
     unsigned int size = sizeof(item) + settings.chunk_size;
 
@@ -202,7 +204,6 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
      * for remaining allocations. As such it makes little sense to do slab
      * preallocation. */
     bool __attribute__ ((unused)) do_slab_prealloc = false;
-    printf("[yedam] slabs.c :: slabs_init()2\n");
     mem_limit = limit;
 
     if (prealloc && mem_base_external == NULL) {
@@ -231,7 +232,6 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
             mem_avail = mem_limit;
         }
     }
-    printf("[yedam] slabs.c :: slabs_init()3\n");
     memset(slabclass, 0, sizeof(slabclass));
 
     while (++i < MAX_NUMBER_OF_SLAB_CLASSES-1) {
@@ -256,7 +256,6 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
         }
     }
 
-    printf("[yedam] slabs.c :: slabs_init()4\n");
     power_largest = i;
     slabclass[power_largest].size = settings.slab_chunk_size_max;
     slabclass[power_largest].perslab = settings.slab_page_size / settings.slab_chunk_size_max;
@@ -276,7 +275,6 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
         }
 
     }
-    printf("[yedam] slabs.c :: slabs_init()5\n");
     if (do_slab_prealloc) {
         if (!reuse_mem) {
             slabs_preallocate(power_largest);

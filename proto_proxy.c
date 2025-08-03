@@ -1018,9 +1018,9 @@ static void proxy_process_command(conn *c, char *command, size_t cmdlen, bool mu
         }
         // lets nread_proxy know we're in ascii mode.
         c->proxy_rctx = NULL;
-        if (settings.verbose) {
-            printf("[yedam] proto_proxy.c :: proxy_process_command()\n");
-        }
+#if ENABLE_PRINT
+            printf("memcached/proto_proxy.c :: proxy_process_command()\n");
+#endif
         process_command_ascii(c, command);
         return;
     }
@@ -1250,7 +1250,9 @@ void mcp_resp_set_elapsed(mcp_resp_t *r) {
 io_pending_proxy_t *mcp_queue_rctx_io(mcp_rcontext_t *rctx, mcp_request_t *rq, mcp_backend_t *be, mcp_resp_t *r) {
     conn *c = rctx->c;
     io_queue_t *q = thread_io_queue_get(rctx->fgen->thread, IO_QUEUE_PROXY);
+#if ENABLE_PRINT
     printf("memcached/proto_proxy.c :: mcp_queue_rctx_io()\n");
+#endif
     io_pending_proxy_t *p = do_cache_alloc(c->thread->io_cache);
     if (p == NULL) {
         WSTAT_INCR(c->thread, proxy_conn_oom, 1);

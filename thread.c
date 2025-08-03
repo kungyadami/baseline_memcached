@@ -311,7 +311,9 @@ static void cq_push(CQ *cq, CQ_ITEM *item) {
  * Returns a fresh connection queue item.
  */
 static CQ_ITEM *cqi_new(CQ *cq) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: cqi_new()\n");
+#endif
     CQ_ITEM *item = cache_alloc(cq->cache);
     if (item == NULL) {
         STATS_LOCK();
@@ -335,18 +337,24 @@ static void cqi_free(CQ *cq, CQ_ITEM *item) {
 // In testing this does result in a large performance uptick, but unclear how
 // much that will transfer from a synthetic benchmark.
 static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: notify_worker()\n");
+#endif
     cq_push(t->ev_queue, item);
 #ifdef HAVE_EVENTFD
     uint64_t u = 1;
+#if ENABLE_PRINT
     printf("memcached/thread.c :: notify_worker()1\n");
+#endif
     if (write(t->n.notify_event_fd, &u, sizeof(uint64_t)) != sizeof(uint64_t)) {
         perror("failed writing to worker eventfd");
         /* TODO: This is a fatal problem. Can it ever happen temporarily? */
     }
 #else
     char buf[1] = "c";
+#if ENABLE_PRINT
     printf("memcached/thread.c :: notify_worker()2\n");
+#endif
     if (write(t->n.notify_send_fd, buf, 1) != 1) {
         perror("Failed writing to notify pipe");
         /* TODO: This is a fatal problem. Can it ever happen temporarily? */
@@ -377,7 +385,9 @@ static void notify_worker_fd(LIBEVENT_THREAD *t, int sfd, enum conn_queue_item_m
  * Creates a worker thread.
  */
 static void create_worker(void *(*func)(void *), void *arg) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: create_worker()\n");
+#endif
     pthread_attr_t  attr;
     int             ret;
 
@@ -403,7 +413,9 @@ void accept_new_conns(const bool do_accept) {
 /****************************** LIBEVENT THREADS *****************************/
 
 static void setup_thread_notify(LIBEVENT_THREAD *me, struct thread_notify *tn, void(*cb)(int, short, void *)) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread_notify()\n");
+#endif
 #ifdef HAVE_EVENTFD
     event_set(&tn->notify_event, tn->notify_event_fd,
               EV_READ | EV_PERSIST, cb, me);
@@ -423,7 +435,9 @@ static void setup_thread_notify(LIBEVENT_THREAD *me, struct thread_notify *tn, v
  * Set up a thread's information.
  */
 static void setup_thread(LIBEVENT_THREAD *me) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread()\n");
+#endif
 
 #if defined(LIBEVENT_VERSION_NUMBER) && LIBEVENT_VERSION_NUMBER >= 0x02000101
     struct event_config *ev_config;
@@ -451,8 +465,9 @@ static void setup_thread(LIBEVENT_THREAD *me) {
 #endif
     pthread_mutex_init(&me->ion_lock, NULL);
     STAILQ_INIT(&me->ion_head);
+#if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread()3\n");
-
+#endif
     me->ev_queue = malloc(sizeof(struct conn_queue));
     if (me->ev_queue == NULL) {
         perror("Failed to allocate memory for connection queue");
@@ -464,7 +479,9 @@ static void setup_thread(LIBEVENT_THREAD *me) {
         perror("Failed to initialize mutex");
         exit(EXIT_FAILURE);
     }
+#if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread()4\n");
+#endif
     me->rbuf_cache = cache_create("rbuf", READ_BUFFER_SIZE, sizeof(char *));
     if (me->rbuf_cache == NULL) {
         fprintf(stderr, "Failed to create read buffer cache\n");
@@ -513,7 +530,7 @@ static void setup_thread(LIBEVENT_THREAD *me) {
     }
 #endif
     thread_io_queue_add(me, IO_QUEUE_NONE, NULL, NULL);
-
+#if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread()5\n");
     printf("\t thread id : %d\n", me->thread_id);
     printf("\t base : %d\n", me->base);
@@ -527,7 +544,7 @@ static void setup_thread(LIBEVENT_THREAD *me) {
 
     printf("\t l : %d\n", me->l);
     printf("\t napi_id : %d\n", me->napi_id);
-    
+#endif
 }
 
 /*
@@ -615,20 +632,10 @@ static void thread_libevent_ionotify(evutil_socket_t fd, short which, void *arg)
  * input arrives on the libevent wakeup pipe.
  */
 static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) {
-    printf("memcached/thread.c :: thread_libevent_process 1\n");
     LIBEVENT_THREAD *me = arg;
-    printf("\t thread id : %d\n", me->thread_id);
-    printf("\t base : %d\n", me->base);
-    printf("\t cur_sfd : %d\n", me->cur_sfd);
-    printf("\t thread_baseid : %d\n", me->thread_baseid);
-    printf("\t conns_tosubmit : %d\n", me->conns_tosubmit);
-    printf("\t stats : %d\n", me->stats);
-    printf("\t rbuf_cache : %d\n", me->rbuf_cache);
-    printf("\t open_bundle : %d\n", me->open_bundle);
-    printf("\t io_cache : %d\n", me->io_cache);
-
-    printf("\t l : %d\n", me->l);
-    printf("\t napi_id : %d\n", me->napi_id);
+#if ENABLE_PRINT
+    printf("memcached/thread.c :: thread_libevent_process 1\n");
+#endif
     CQ_ITEM *item;
     conn *c;
     uint64_t ev_count = 0; // max number of events to loop through this run.
@@ -660,11 +667,15 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
 
         switch (item->mode) {
             case queue_new_conn:
+            #if ENABLE_PRINT
                 printf("memcached/thread.c :: thread_libevent_process2\n");
+            #endif
                 c = conn_new(item->sfd, item->init_state, item->event_flags,
                                    item->read_buffer_size, item->transport,
                                    me->base, item->ssl, item->conntag, item->bproto);
+            #if ENABLE_PRINT
                 printf("memcached/thread.c :: thread_libevent_process, end conn_new\n");
+            #endif
                 if (c == NULL) {
                     if (IS_UDP(item->transport)) {
                         fprintf(stderr, "Can't listen for events on UDP socket\n");
@@ -681,20 +692,10 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
                         close(item->sfd);
                     }
                 } else {
+                    #if ENABLE_PRINT
                     printf("memcached/thread.c :: thread_libevent_process3, c is not null\n");
+                    #endif
                     c->thread = me;
-                    printf("\t thread id : %d\n", c->thread->thread_id);
-                    printf("\t base : %d\n", c->thread->base);
-                    printf("\t cur_sfd : %d\n", c->thread->cur_sfd);
-                    printf("\t thread_baseid : %d\n", c->thread->thread_baseid);
-                    printf("\t conns_tosubmit : %d\n", c->thread->conns_tosubmit);
-                    printf("\t stats : %d\n", c->thread->stats);
-                    printf("\t rbuf_cache : %d\n", c->thread->rbuf_cache);
-                    printf("\t open_bundle : %d\n", c->thread->open_bundle);
-                    printf("\t io_cache : %d\n", c->thread->io_cache);
-
-                    printf("\t l : %d\n", c->thread->l);
-                    printf("\t napi_id : %d\n", c->thread->napi_id);
 #ifdef TLS
                     if (settings.ssl_enabled && c->ssl != NULL) {
                         assert(c->thread && c->thread->ssl_wbuf);
@@ -829,17 +830,21 @@ select:
 void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
                        int read_buffer_size, enum network_transport transport, void *ssl,
                        uint64_t conntag, enum protocol bproto) {
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("[yedam] thread.c :: dispatch_conn_new()\n");
-    }
+#endif
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
 
     if (!settings.num_napi_ids){
+#if ENABLE_PRINT
         printf("[yedam] thread.c :: dispatch_conn_new() 1\n");
+#endif
         thread = select_thread_round_robin();
     }else{
+#if ENABLE_PRINT
         printf("[yedam] thread.c :: dispatch_conn_new() 2\n");
+#endif
         thread = select_thread_by_napi_id(sfd);
     }
 
@@ -850,9 +855,9 @@ void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
         fprintf(stderr, "Failed to allocate memory for connection object\n");
         return;
     }
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("[yedam] thread.c :: dispatch_conn_new() 2\n");
-    }
+#endif
     item->sfd = sfd;
     item->init_state = init_state;
     item->event_flags = event_flags;
@@ -866,21 +871,10 @@ void dispatch_conn_new(int sfd, enum conn_states init_state, int event_flags,
 
     MEMCACHED_CONN_DISPATCH(sfd, (int64_t)thread->thread_id);
     notify_worker(thread, item);
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("[yedam] thread.c :: dispatch_conn_new()3\n");
         printf("\t thread id : %d\n", thread->thread_id);
-        printf("\t base : %d\n", thread->base);
-        printf("\t cur_sfd : %d\n", thread->cur_sfd);
-        printf("\t thread_baseid : %d\n", thread->thread_baseid);
-        printf("\t conns_tosubmit : %d\n", thread->conns_tosubmit);
-        printf("\t stats : %d\n", thread->stats);
-        printf("\t rbuf_cache : %d\n", thread->rbuf_cache);
-        printf("\t open_bundle : %d\n", thread->open_bundle);
-        printf("\t io_cache : %d\n", thread->io_cache);
-
-        printf("\t l : %d\n", thread->l);
-        printf("\t napi_id : %d\n", thread->napi_id);
-    }
+#endif
 }
 
 /*
@@ -963,7 +957,9 @@ item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const boo
     uint32_t hv;
     hv = hash(key, nkey);
     item_lock(hv);
+#if ENABLE_PRINT
     printf("[yedam] thread.c :: item_get()\n");
+#endif
     it = do_item_get(key, nkey, hv, t, do_update);
     item_unlock(hv);
     return it;
@@ -1045,7 +1041,9 @@ enum delta_result_type add_delta(LIBEVENT_THREAD *t, const char *key,
  * Stores an item in the cache (high level, obeys set/add/replace semantics)
  */
 enum store_item_type store_item(item *item, int comm, LIBEVENT_THREAD *t, int *nbytes, uint64_t *cas, const uint64_t cas_in, bool cas_stale) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: store_item\n");
+#endif
     enum store_item_type ret;
     uint32_t hv;
 
@@ -1167,7 +1165,9 @@ static void memcached_thread_notify_init(struct thread_notify *tn) {
  * nthreads  Number of worker event handler threads to spawn
  */
 void memcached_thread_init(int nthreads, void *arg) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: memcached_thread_init()\n");
+#endif
     int         i;
     int         power;
 
@@ -1237,7 +1237,9 @@ void memcached_thread_init(int nthreads, void *arg) {
     for (i = 0; i < nthreads; i++) {
         //printf("memcached/thread.c :: memcached_thread_init() 1, threads[%d]->open_bundle : %d\n", i, threads[i].open_bundle);
         create_worker(worker_libevent, &threads[i]);
+#if ENABLE_PRINT
         printf("memcached/thread.c :: memcached_thread_init(), threads[%d] id : %d\n", i, threads[i].thread_id);
+#endif
     }
 
     /* Wait for all the threads to set themselves up before returning. */
@@ -1257,7 +1259,9 @@ void memcached_thread_init(int nthreads, void *arg) {
 void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state, int event_flags,
                        int read_buffer_size, enum network_transport transport,
                        uint64_t conntag, enum protocol bproto) {
+#if ENABLE_PRINT
     printf("memcached/thread.c :: mpi_dispatch_conn_new(), c->item : %p\n", c->item);
+#endif
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
 
@@ -1267,7 +1271,9 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
     //     thread = select_thread_by_napi_id(sfd);
 
     item = cqi_new(thread->ev_queue);
+#if ENABLE_PRINT
     printf("\t mpi_dispatch_conn_new - item : %p\n", item);
+#endif
     if (item == NULL) {
         //close(sfd);
         /* given that malloc failed this may also fail, but let's try */
@@ -1275,9 +1281,9 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
         exit(0); //yedam
         return;
     }
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/thread.c :: mpi_dispatch_conn_new() 2\n");
-    }
+#endif
     item->sfd = c->rank;
     item->init_state = init_state;
     item->event_flags = event_flags;
@@ -1295,20 +1301,10 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
 
 
 
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("memcached/thread.c :: mpi_dispatch_conn_new()3\n");
         printf("\t thread id : %d\n", thread->thread_id);
-        printf("\t base : %d\n", thread->base);
-        printf("\t cur_sfd : %d\n", thread->cur_sfd);
-        printf("\t thread_baseid : %d\n", thread->thread_baseid);
-        printf("\t conns_tosubmit : %d\n", thread->conns_tosubmit);
-        printf("\t stats : %d\n", thread->stats);
-        printf("\t rbuf_cache : %d\n", thread->rbuf_cache);
-        printf("\t open_bundle : %d\n", thread->open_bundle);
-        printf("\t io_cache : %d\n", thread->io_cache);
-
-        printf("\t item : %p\n", c->item);
-    }
+#endif
 }
 
 

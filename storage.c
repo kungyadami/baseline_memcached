@@ -250,7 +250,9 @@ static void _storage_get_item_cb(void *e, obj_io *io, int ret) {
 }
 
 int storage_get_item(conn *c, item *it, mc_resp *resp) {
+#if ENABLE_PRINT
     printf("memcached/storage.c :: storage_get_item()\n");
+#endif
 #ifdef NEED_ALIGN
     item_hdr hdr;
     memcpy(&hdr, ITEM_data(it), sizeof(hdr));
@@ -501,7 +503,9 @@ static void storage_finalize_cb(io_pending_t *pending) {
 static int storage_write(void *storage, const int clsid, const int item_age) {
     int did_moves = 0;
     struct lru_pull_tail_return it_info;
+#if ENABLE_PRINT
     printf("memcached/storage.c :: lru_pull_tail()\n");
+#endif
     it_info.it = NULL;
     lru_pull_tail(clsid, COLD_LRU, 0, LRU_PULL_RETURN_ITEM, 0, &it_info);
     /* Item is locked, and we have a reference to it. */

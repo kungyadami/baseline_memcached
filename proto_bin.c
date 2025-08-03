@@ -471,7 +471,9 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
 
     if (settings.verbose > 1) {
         //printf("[yedam] proto_bin.c :: process_bin_get_or_touch()-[1]\n");
+#if ENABLE_FPRINT
         fprintf(stderr, "<%d %s ", c->sfd, should_touch ? "TOUCH" : "GET");
+#endif
         if (fwrite(key, 1, nkey, stderr)) {}
         fputc('\n', stderr);
     }
@@ -482,9 +484,9 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
 
         it = item_touch(key, nkey, realtime(exptime), c->thread);
     } else {
-        if (settings.verbose) {
-            printf("[yedam] proto_bin.c :: process_bin_get_or_touch()\n");
-        }
+#if ENABLE_PRINT
+            printf("memcached/proto_bin.c :: process_bin_get_or_touch()\n");
+#endif
         it = item_get(key, nkey, c->thread, DO_UPDATE);
     }
 
@@ -616,7 +618,9 @@ static void process_bin_stat(conn *c) {
     if (settings.verbose > 1) {
         int ii;
         //printf("[yedam] proto_bin.c :: process_bin_stat()-[1]\n");
+#if ENABLE_FPRINT
         fprintf(stderr, "<%d STATS ", c->sfd);
+#endif
         for (ii = 0; ii < nkey; ++ii) {
             fprintf(stderr, "%c", subcommand[ii]);
         }
@@ -1106,11 +1110,17 @@ static void process_bin_update(conn *c, char *extbuf) {
         int ii;
         //printf("[yedam] proto_bin.c :: process_bin_update()-[1]\n");
         if (c->cmd == PROTOCOL_BINARY_CMD_ADD) {
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d ADD ", c->sfd);
+#endif
         } else if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d SET ", c->sfd);
+#endif
         } else {
+#if ENABLE_FPRINT
             fprintf(stderr, "<%d REPLACE ", c->sfd);
+#endif
         }
         for (ii = 0; ii < nkey; ++ii) {
             fprintf(stderr, "%c", key[ii]);
@@ -1146,9 +1156,9 @@ static void process_bin_update(conn *c, char *extbuf) {
         /* Avoid stale data persisting in cache because we failed alloc.
          * Unacceptable for SET. Anywhere else too? */
         if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
-            if (settings.verbose) {
+#if ENABLE_PRINT
                 printf("[yedam] proto_bin.c :: process_bin_update()\n");
-            }
+#endif
             it = item_get(key, nkey, c->thread, DONT_UPDATE);
             if (it) {
                 item_unlink(it);

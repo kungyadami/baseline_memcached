@@ -162,10 +162,12 @@ unsigned int do_get_lru_size(uint32_t id) {
  */
 static size_t item_make_header(const uint8_t nkey, const client_flags_t flags, const int nbytes,
                      char *suffix, uint8_t *nsuffix) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: item_make_header\n");
     printf("\t nkey : %d\n", nkey);
     printf("\t nbytes : %d\n", nbytes);
     printf("\t sizeof(item) : %zu\n", sizeof(item));
+#endif
 
     if (flags == 0) {
         *nsuffix = 0;
@@ -176,7 +178,9 @@ static size_t item_make_header(const uint8_t nkey, const client_flags_t flags, c
 }
 
 item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_alloc_pull\n");
+#endif
     item *it = NULL;
     int i;
     /* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -265,12 +269,13 @@ item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain) {
 
 item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t flags,
                     const rel_time_t exptime, const int nbytes) {
+#if ENABLE_PRINT
     printf("memcached/item.c :: do_item_alloc()\n");
     printf("\t key : %s\n", key); //key_0
     printf("\t nkey : %zu\n", nkey);
     printf("\t nbytes : %d\n", nbytes);
     printf("\t exptime : %u\n", exptime);
-
+#endif
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
@@ -279,8 +284,10 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         return 0;
 
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
+#if ENABLE_PRINT
     printf("memcached/item.c :: do_item_alloc() - [2]\n");
     printf("\t ntotal : %u\n", ntotal);
+#endif
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
     }
@@ -295,7 +302,9 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
      */
     if (ntotal > settings.slab_chunk_size_max) {
         //안 들어감
+#if ENABLE_PRINT
         printf("memcached/item.c :: do_item_alloc() - [3]\n");
+#endif
         /* We still link this item into the LRU for the larger slab class, but
          * we're pulling a header from an entirely different slab class. The
          * free routines handle large items specifically.
@@ -317,10 +326,11 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         if (it != NULL)
             it->it_flags |= ITEM_CHUNKED;
     } else {
+#if ENABLE_PRINT
         printf("memcached/item.c :: do_item_alloc() - [4]\n");
         printf("\t ntotal : %d | id : %d\n", ntotal, id);
+#endif
         it = do_item_alloc_pull(ntotal, id);
-        printf("memcached/item.c :: do_item_alloc() - [5]\n");
     }
 
     if (it == NULL) {
@@ -414,9 +424,9 @@ void do_item_link_fixup(item *it) {
     item **head, **tail;
     int ntotal = ITEM_ntotal(it);
     uint32_t hv = hash(ITEM_key(it), it->nkey);
-    if (settings.verbose) {
+#if ENABLE_PRINT
         printf("[yedam] items.c :: do_item_link_fixup()\n");
-    }
+#endif
     assoc_insert(it, hv);
 
     head = &heads[it->slabs_clsid];
@@ -516,13 +526,17 @@ static void item_unlink_q(item *it) {
 }
 
 int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_link() , it->time : %d\n", it->time);
+#endif
     //여기서 insert 진행하는 것 같다
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     it->it_flags |= ITEM_LINKED;
     it->time = current_time;
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_link()2 - it->time : %d \n", it->time);
+#endif
 
     STATS_LOCK();
     stats_state.curr_bytes += ITEM_ntotal(it);
@@ -532,7 +546,9 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, cas);
+#if ENABLE_PRINT
     printf("[yedam] items.c :: do_item_link()3\n");
+#endif
     assoc_insert(it, hv);
     item_link_q(it);
     refcount_incr(it);
@@ -542,7 +558,9 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 }
 
 void do_item_unlink(item *it, const uint32_t hv) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_unlink()\n");
+#endif
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -559,7 +577,9 @@ void do_item_unlink(item *it, const uint32_t hv) {
 
 /* FIXME: Is it necessary to keep this copy/pasted code? */
 void do_item_unlink_nolock(item *it, const uint32_t hv) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_unlink_nolock()\n");
+#endif
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
@@ -587,7 +607,9 @@ void do_item_remove(item *it) {
 /* Bump the last accessed time, or relink if we're in compat mode */
 void do_item_update(item *it) {
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_update()\n");
+#endif
 
     /* Hits to COLD_LRU immediately move to WARM. */
     if (settings.lru_segmented) {
@@ -595,7 +617,9 @@ void do_item_update(item *it) {
         if ((it->it_flags & ITEM_LINKED) != 0) {
             if (ITEM_lruid(it) == COLD_LRU && (it->it_flags & ITEM_ACTIVE)) {
                 it->time = current_time;
+#if ENABLE_PRINT
                 printf("memcached/items.c :: do_item_update()2 it->time : %d\n", it->time);
+#endif
                 item_unlink_q(it);
                 it->slabs_clsid = ITEM_clsid(it);
                 it->slabs_clsid |= WARM_LRU;
@@ -604,7 +628,9 @@ void do_item_update(item *it) {
             } else {
                 
                 it->time = current_time;
+#if ENABLE_PRINT
                 printf("memcached/items.c :: do_item_update()3 it->time : %d\n", it->time);
+#endif
             }
         }
     } else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
@@ -612,7 +638,9 @@ void do_item_update(item *it) {
 
         if ((it->it_flags & ITEM_LINKED) != 0) {
             it->time = current_time;
+#if ENABLE_PRINT
             printf("memcached/items.c :: do_item_update()4 it->time : %d\n", it->time);
+#endif
             item_unlink_q(it);
             item_link_q(it);
         }
@@ -629,7 +657,9 @@ int do_item_replace(item *it, item *new_it, const uint32_t hv, const uint64_t ca
 }
 
 void item_flush_expired(void) {
+#if ENABLE_PRINT
     printf("memcached/item.c :: item_flush_expired() \n");
+#endif
     int i;
     item *iter, *next;
     if (settings.oldest_live == 0)
@@ -1017,17 +1047,22 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
+#if ENABLE_PRINT
     printf("[yedam] items.c :: do_item_get()\n");
+#endif
     item *it = assoc_find(key, nkey, hv);
-    printf("[yedam] items.c :: do_item_get() 2\n");
     if (it != NULL) {
+#if ENABLE_PRINT
         printf("[yedam] items.c :: do_item_get() 3\n");
+#endif
         refcount_incr(it);
     }
     int was_found = 0;
 
     if (settings.verbose > 2) {
+#if ENABLE_PRINT
         printf("[yedam] items.c :: do_item_get() 4\n");
+#endif
         int ii;
         if (it == NULL) {
             fprintf(stderr, "> NOT FOUND ");
@@ -1038,13 +1073,19 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             fprintf(stderr, "%c", key[ii]);
         }
     }
+#if ENABLE_PRINT
     printf("[yedam] items.c :: do_item_get() 5\n");
+#endif
 
     if (it != NULL) {
+#if ENABLE_PRINT
         printf("[yedam] items.c :: do_item_get() 6\n");
+#endif
         was_found = 1;
         if (item_is_flushed(it)) {
+#if ENABLE_PRINT
             printf("[yedam] items.c :: do_item_get() 7\n");
+#endif
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1057,7 +1098,9 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 2;
         } else if (it->exptime != 0 && it->exptime <= current_time) {
+#if ENABLE_PRINT
             printf("[yedam] items.c :: do_item_get() 8\n");
+#endif
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1070,7 +1113,9 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 3;
         } else { //여기 들어감
+#if ENABLE_PRINT
             printf("[yedam] items.c :: do_item_get() 9\n");
+#endif
             if (do_update) {
                 do_item_bump(t, it, hv);
             }
@@ -1084,7 +1129,9 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     //yedam
     // LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
     //            nkey, (it) ? it->nbytes : 0, (it) ? ITEM_clsid(it) : 0, t->cur_sfd);
+#if ENABLE_PRINT
     printf("[yedam] items.c :: do_item_get() 10\n"); //여기에 들어감
+#endif
     return it;
 }
 
@@ -1092,7 +1139,9 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
 // Split out of do_item_get() to allow mget functions to look through header
 // data before losing state modified via the bump function.
 void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
+#if ENABLE_PRINT
     printf("memcached/items.c :: do_item_bump()\n");
+#endif
     /* We update the hit markers only during fetches.
      * An item needs to be hit twice overall to be considered
      * ACTIVE, but only needs a single hit to maintain activity
@@ -1107,7 +1156,9 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
                 it->it_flags |= ITEM_ACTIVE;
                 if (ITEM_lruid(it) != COLD_LRU) {
                     it->time = current_time; // only need to bump time.
+#if ENABLE_PRINT
                     printf("memcached/items.c :: do_item_bump() it->time : %d\n", it->time);
+#endif
                 } else if (!lru_bump_async(t->lru_bump_buf, it, hv)) {
                     // add flag before async bump to avoid race.
                     it->it_flags &= ~ITEM_ACTIVE;
@@ -1607,7 +1658,9 @@ static pthread_t lru_maintainer_tid;
 #define MIN_LRU_MAINTAINER_SLEEP 1000
 
 static void *lru_maintainer_thread(void *arg) {
+#if ENABLE_PRINT
     printf("memcached/item.c :: lru_maintainer_thread()\n");
+#endif
     int i;
     useconds_t to_sleep = MIN_LRU_MAINTAINER_SLEEP;
     useconds_t last_sleep = MIN_LRU_MAINTAINER_SLEEP;
