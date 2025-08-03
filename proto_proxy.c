@@ -818,6 +818,7 @@ static void _proxy_run_tresp_to_resp(mc_resp *tresp, mc_resp *resp) {
     }
     resp->iovcnt = tresp->iovcnt;
     resp->chunked_total = tresp->chunked_total;
+    printf("memcached/proto_proxy.c :: _proxy_run_tresp_to_resp\n");
     resp->chunked_data_iov = tresp->chunked_data_iov;
     // copy UDP headers...
     resp->request_id = tresp->request_id;

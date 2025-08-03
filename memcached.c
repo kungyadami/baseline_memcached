@@ -1227,7 +1227,7 @@ void conn_set_state(conn *c, enum conn_states state) {
 void resp_reset(mc_resp *resp) {
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_reset()\n");
-    printf("memcached/memcached.c :: resp->item : %d\n", resp->item);
+    printf("memcached/memcached.c :: resp->item : %p\n", resp->item);
 #endif
     if (resp->item) {
 #if ENABLE_PRINT
@@ -1276,6 +1276,7 @@ void resp_add_iov(mc_resp *resp, const void *buf, int len) {
 // TODO: I'm hoping this isn't a permanent abstraction while I learn what the
 // API should be.
 void resp_add_chunked_iov(mc_resp *resp, const void *buf, int len) {
+    printf("memcached/memcached.c :: resp_add_chunked_iov()\n");
     resp->chunked_data_iov = resp->iovcnt;
     resp->chunked_total = len;
     resp_add_iov(resp, buf, len);
@@ -5855,13 +5856,15 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
             resp = resp->next;
             continue;
         }
+        //printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
         if (resp->chunked_data_iov) {
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_transmit_pre()3\n");
-#endif
+//#if ENABLE_PRINT
+            printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
+//#endif
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
+            //resp->chunked_data_iov 에서 짱 큰 값이 나옴 .. 왜죠
             item_chunk *ch = (item_chunk *)ITEM_schunk((item *)resp->iov[resp->chunked_data_iov].iov_base);
             int x;
             for (x = 0; x < resp->iovcnt; x++) {
@@ -6405,9 +6408,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
                 stop = true;
                 break;
             }
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1\n");
-#endif
+//#if ENABLE_PRINT
+            //printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1, client->resp->chunked_data_iov : %d\n", client->resp->chunked_data_iov);
+//#endif
             switch (mpi_sendmsg(client)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (client->state == conn_mwrite) { //요기 들어감
@@ -6801,6 +6804,17 @@ int main (int argc, char **argv) {
         mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size);
 
         mpi_conn_init(mpi_conn_arr, size);
+
+        int mpi_color = (rank != 0) ? 1 : MPI_UNDEFINED;
+
+        // MPI_Comm new_comm;
+        // MPI_Comm_split(MPI_COMM_WORLD, mpi_color, rank, &new_comm);
+
+        // if (mpi_color != MPI_UNDEFINED) {
+        //     MPI_Barrier(new_comm);  // 새 communicator에 포함된 랭크들만 barrier
+        // }else{
+        //     printf("Rank %d skipped the barrier\n", rank);
+        // }
 
         // mpi_conn_arr[1].rank = 1;
         // mpi_conn_arr[1].state = conn_read;
