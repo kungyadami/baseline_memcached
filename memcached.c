@@ -5872,9 +5872,9 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
             resp = resp->next;
             continue;
         }
-        if(resp->chunked_data_iov > 0){ //잠시 디버깅
-            resp->chunked_data_iov = 0;
-        }
+        // if(resp->chunked_data_iov > 0){ //잠시 디버깅
+        //     resp->chunked_data_iov = 0;
+        // }
         //printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
         if (resp->chunked_data_iov) {
 //#if ENABLE_PRINT
