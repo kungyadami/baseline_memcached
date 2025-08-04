@@ -147,7 +147,7 @@ static void _finalize_mset(conn *c, int nbytes, enum store_item_type ret, uint64
     p += 2;
     // we're offset into wbuf, but good convention to track wbytes.
     resp->wbytes = p - resp->wbuf;
-    resp_add_iov(resp, end, p - end);
+    resp_add_iov(resp, end, p - end, 0);
 }
 
 /*
@@ -658,6 +658,7 @@ static inline int make_ascii_get_suffix(char *suffix, item *it, bool return_cas,
     return (p - suffix) + 2;
 }
 
+
 /* ntokens is overwritten here... shrug.. */
 static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens, bool return_cas, bool should_touch) {
 #if ENABLE_PRINT
@@ -735,7 +736,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                   memcpy(p, ITEM_key(it), it->nkey);
                   p += it->nkey;
                   p += make_ascii_get_suffix(p, it, return_cas, nbytes);
-                  resp_add_iov(resp, resp->wbuf, p - resp->wbuf);
+                  resp_add_iov(resp, resp->wbuf, p - resp->wbuf, 0);
 
 #ifdef EXTSTORE
 #if ENABLE_PRINT
@@ -751,13 +752,13 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                           goto stop;
                       }
                   } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                      resp_add_iov(resp, ITEM_data(it), it->nbytes);
+                      resp_add_iov(resp, ITEM_data(it), it->nbytes, 0);
                   } else {
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
 #else
                   if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                      resp_add_iov(resp, ITEM_data(it), it->nbytes);
+                      resp_add_iov(resp, ITEM_data(it), it->nbytes, 0);
                   } else {
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
@@ -892,7 +893,7 @@ stop:
         printf("memcached/proto_text.c :: process_get_command 18\n");
 #endif
         // Tag the end token onto the most recent response object.
-        resp_add_iov(resp, "END\r\n", 5);
+        resp_add_iov(resp, "END\r\n", 5, 0);
         conn_set_state(c, conn_new_cmd);
     }
 }
@@ -1085,7 +1086,7 @@ static void process_meta_command(conn *c, token_t *tokens, const size_t ntokens)
 
         item_remove(it);
         resp->wbytes = total + ret;
-        resp_add_iov(resp, resp->wbuf, resp->wbytes);
+        resp_add_iov(resp, resp->wbuf, resp->wbytes, 0);
         conn_set_state(c, conn_new_cmd);
     } else {
         out_string(c, "EN");
@@ -1480,7 +1481,7 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
         *(p+2) = '\0';
         p += 2;
         // finally, chain in the buffer.
-        resp_add_iov(resp, resp->wbuf, p - resp->wbuf);
+        resp_add_iov(resp, resp->wbuf, p - resp->wbuf, 0);
 
         if (of.value) {
 #ifdef EXTSTORE
@@ -1493,13 +1494,13 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
                     failed = true;
                 }
             } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                resp_add_iov(resp, ITEM_data(it), it->nbytes);
+                resp_add_iov(resp, ITEM_data(it), it->nbytes, 0);
             } else {
                 resp_add_chunked_iov(resp, it, it->nbytes);
             }
 #else
             if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                resp_add_iov(resp, ITEM_data(it), it->nbytes);
+                resp_add_iov(resp, ITEM_data(it), it->nbytes, 0);
             } else {
                 resp_add_chunked_iov(resp, it, it->nbytes);
             }
@@ -1589,7 +1590,7 @@ static void process_mget_command(conn *c, token_t *tokens, const size_t ntokens)
         resp->wbytes = p - resp->wbuf;
         memcpy(resp->wbuf + resp->wbytes, "\r\n", 2);
         resp->wbytes += 2;
-        resp_add_iov(resp, resp->wbuf, resp->wbytes);
+        resp_add_iov(resp, resp->wbuf, resp->wbytes, 0);
         conn_set_state(c, conn_new_cmd);
     }
     return;
@@ -1965,7 +1966,7 @@ cleanup:
     resp->wbytes = p - resp->wbuf;
     memcpy(resp->wbuf + resp->wbytes, "\r\n", 2);
     resp->wbytes += 2;
-    resp_add_iov(resp, resp->wbuf, resp->wbytes);
+    resp_add_iov(resp, resp->wbuf, resp->wbytes, 0);
     conn_set_state(c, conn_new_cmd);
     return;
 error:
@@ -2200,7 +2201,7 @@ static void process_marithmetic_command(conn *c, token_t *tokens, const size_t n
     resp->wbytes = p - resp->wbuf;
     memcpy(resp->wbuf + resp->wbytes, "\r\n", 2);
     resp->wbytes += 2;
-    resp_add_iov(resp, resp->wbuf, resp->wbytes);
+    resp_add_iov(resp, resp->wbuf, resp->wbytes, 0);
     conn_set_state(c, conn_new_cmd);
     return;
 error:
@@ -3399,7 +3400,7 @@ void process_command_ascii(conn *c, char *command) {
 
 
 /* ntokens is overwritten here... shrug.. */
-static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tokens, size_t ntokens, bool return_cas, bool should_touch) {
+static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tokens, size_t ntokens, bool return_cas, bool should_touch, int tid) {
 #if ENABLE_PRINT
     printf("memcached/proto_text.c :: mpi_process_get_command\n");
 #endif
@@ -3428,6 +3429,9 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 
     do {
         while(key_token->length != 0) {
+#if MPI_DEBUG
+            printf("memcached/proto_text.c :: mpi_process_get_command() tid : %d | key_token->length : %d\n", tid, key_token->length);
+#endif
 #if ENABLE_PRINT
             printf("memcached/proto_text.c :: mpi_process_get_command 2\n");
 #endif
@@ -3464,7 +3468,7 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 
                 {
 #if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 6\n");
+                printf("memcached/proto_text.c :: mpi_process_get_command 6\n");
 #endif
                   MEMCACHED_COMMAND_GET(c->rank, ITEM_key(it), it->nkey,
                                         it->nbytes, ITEM_get_cas(it));
@@ -3475,7 +3479,8 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                   memcpy(p, ITEM_key(it), it->nkey);
                   p += it->nkey;
                   p += make_ascii_get_suffix(p, it, return_cas, nbytes);
-                  resp_add_iov(resp, resp->wbuf, p - resp->wbuf);
+                  resp_add_iov(resp, resp->wbuf, p - resp->wbuf, tid);
+                 //printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
 
 #ifdef EXTSTORE
 #if ENABLE_PRINT
@@ -3492,19 +3497,38 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                           goto stop;
                       }
                   } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                      resp_add_iov(resp, ITEM_data(it), it->nbytes);
+#if MPI_DEBUG
+                    if(resp!=NULL && resp->tosend != 33 && resp->tosend != 35){
+                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
+                    }
+#endif
+                      resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
+                    //  if(resp!=NULL && resp->tosend != 33 && resp->tosend != 35){
+                    //     printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
+                    // }
+#if MPI_DEBUG
+                        if(resp!=NULL){
+                            printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->iovcnt : %d | it->nbytes : %d\n", tid, resp->iovcnt, it->nbytes);
+                            printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
+                        }
+#endif
                   } else {
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
 #else
                   if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                      resp_add_iov(resp, ITEM_data(it), it->nbytes);
+                      resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
                   } else {
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
 #endif
                 }
-
+#if MPI_DEBUG
+                if(resp!=NULL){
+                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->iovcnt : %d\n", tid, resp->iovcnt);
+                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
+                }
+#endif
                 if (settings.verbose > 1) {
 #if ENABLE_PRINT
                     printf("memcached/proto_text.c :: mpi_process_get_command 7\n");
@@ -3573,6 +3597,11 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                     goto stop;
                 }
                 resp = c->resp;
+#if MPI_DEBUG
+                if(resp!=NULL){
+                    printf("memcached/proto_text.c :: mpi_process_get_command() 3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
+                }
+#endif
             }
 
         }
@@ -3632,9 +3661,14 @@ stop:
         printf("memcached/proto_text.c :: mpi_process_get_command 18\n");
 #endif
         // Tag the end token onto the most recent response object.
-        resp_add_iov(resp, "END\r\n", 5);
+        resp_add_iov(resp, "END\r\n", 5, tid);
         //conn_set_state(c, conn_new_cmd);
         c->state = conn_new_cmd;
+#if MPI_DEBUG
+        if(resp!=NULL){
+            printf("memcached/proto_text.c :: mpi_process_get_command() 4, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
+        }
+#endif
     }
 }
 
@@ -3775,7 +3809,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 
 
 
-void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
+void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) {
 #if ENABLE_PRINT
     printf("memcached/proto_text.c :: mpi_process_command_ascii()\n");
 #endif
@@ -3790,12 +3824,20 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
 #endif
 
     assert(c != NULL);
-
+#if MPI_DEBUG
+    if(c->resp_head!=NULL){
+        printf("memcached/proto_text.c :: mpi_process_command_ascii() first, tid : %d | c->resp_head->chunked_data_iov : %d\n",tid, c->resp_head->chunked_data_iov);
+    }
+#endif
     if (!mpi_resp_start(c)) {
         c->state = conn_closing;
         return;
     }
-
+#if MPI_DEBUG
+    if(c->resp_head!=NULL){
+        printf("memcached/proto_text.c :: mpi_process_command_ascii() second, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
+    }
+#endif
     c->thread->cur_sfd = c->rank; // cuddle sfd for logging.
     ntokens = tokenize_command(command, tokens, MAX_TOKENS);
     // All commands need a minimum of two tokens: cmd and NULL finalizer
@@ -3812,13 +3854,18 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
         WANT_TOKENS_MIN(ntokens, 3);
         if (strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) {
             //여기에 들어가서 process_get_command() 실행한다
-            mpi_process_get_command(c, tokens, ntokens, false, false);
+            mpi_process_get_command(c, tokens, ntokens, false, false, tid);
+#if MPI_DEBUG
+            if(c->resp_head!=NULL){
+                printf("memcached/proto_text.c :: mpi_process_command_ascii(), ?? tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
+            }
+#endif
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0) {
-            mpi_process_get_command(c, tokens, ntokens, true, false);
+            mpi_process_get_command(c, tokens, ntokens, true, false, tid);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gat") == 0) {
-            mpi_process_get_command(c, tokens, ntokens, false, true);
+            mpi_process_get_command(c, tokens, ntokens, false, true, tid);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gats") == 0) {
-            mpi_process_get_command(c, tokens, ntokens, true, true);
+            mpi_process_get_command(c, tokens, ntokens, true, true, tid);
         } else {
             out_string(c, "ERROR");
         }
@@ -3828,6 +3875,7 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command) {
             mpi_process_update_command(c, tokens, ntokens, comm, false);
         }
     } 
+
     return;
 }
 
@@ -3975,7 +4023,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 
 
 
-int mpi_try_read_command_ascii(struct mpi_conn_info *c) {
+int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
 #if ENABLE_PRINT
     printf("memcached/proto_text.c :: mpi_try_read_command_ascii()\n");
 #endif
@@ -4032,8 +4080,10 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c) {
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time; //시간 업데이트하기
-
-    mpi_process_command_ascii(c, c->rcurr);
+    if(c->resp_head!=NULL){
+        printf("memcached/proto_text.c :: mpi_try_read_command_ascii() prev, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
+    }
+    mpi_process_command_ascii(c, c->rcurr, tid);
 
     c->rbytes -= (cont - c->rcurr);
     c->rcurr = cont;
@@ -4041,8 +4091,9 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c) {
     printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 3, c->rbytes : %d\n", c->rbytes);
 #endif
     assert(c->rcurr <= (c->rbuf + c->rsize));
-
-
+#if MPI_DEBUG
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() next, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
+#endif
     return 1;
 }
 #endif

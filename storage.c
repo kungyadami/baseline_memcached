@@ -145,6 +145,7 @@ void storage_stats(ADD_STAT add_stats, void *c) {
 // io_pending's callback back in the worker thread.
 // It might make sense to keep the crc32c check here though.
 static void _storage_get_item_cb(void *e, obj_io *io, int ret) {
+    //printf("memcached/storage.c :: _storage_get_item_cb()\n");
     // FIXME: assumes success
     io_pending_storage_t *p = (io_pending_storage_t *)io->data;
     mc_resp *resp = p->resp;
@@ -345,7 +346,7 @@ int storage_get_item(conn *c, item *it, mc_resp *resp) {
     if (chunked) {
         resp_add_chunked_iov(resp, new_it, iovtotal);
     } else {
-        resp_add_iov(resp, "", iovtotal);
+        resp_add_iov(resp, "", iovtotal, 0);
     }
 
     // We can't bail out anymore, so mc_resp owns the IO from here.

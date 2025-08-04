@@ -59,6 +59,7 @@
 #define ENABLE_MPI_FUNCTIONS 1
 #define ENABLE_PRINT 0
 #define ENABLE_FPRINT 0
+#define MPI_DEBUG 0
 #ifdef EXTSTORE
 #include "crc32c.h"
 #endif
@@ -1135,7 +1136,7 @@ item* limited_get(const char *key, size_t nkey, LIBEVENT_THREAD *t, uint32_t exp
 item* limited_get_locked(const char *key, size_t nkey, LIBEVENT_THREAD *t, bool do_update, uint32_t *hv, bool *overflow);
 // Read/Response object handlers.
 void resp_reset(mc_resp *resp);
-void resp_add_iov(mc_resp *resp, const void *buf, int len);
+void resp_add_iov(mc_resp *resp, const void *buf, int len, int tid);
 void resp_add_chunked_iov(mc_resp *resp, const void *buf, int len);
 bool resp_start(conn *c);
 mc_resp *resp_start_unlinked(conn *c);

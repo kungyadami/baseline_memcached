@@ -154,9 +154,9 @@ mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp);
 
 static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res);
 
-static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused);
+static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused, int tid);
 
-ssize_t mpi_sendmsg(struct mpi_conn_info *c);
+ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid);
 
 static bool mpi_rbuf_alloc(struct mpi_conn_info *c);
 
@@ -174,7 +174,7 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 static void mpi_conn_close(struct mpi_conn_info *c);
 
-static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr);
+static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr, int tid);
 
 
 
@@ -1263,23 +1263,37 @@ void resp_reset(mc_resp *resp) {
     resp->skip = false;
 }
 
-void resp_add_iov(mc_resp *resp, const void *buf, int len) {
+void resp_add_iov(mc_resp *resp, const void *buf, int len, int tid) {
+#if MPI_DEBUG
+    printf("memcached/memcached.c :: resp_add_iov(), [%d] len : %d\n", tid, len);
+#endif
     assert(resp->iovcnt < MC_RESP_IOVCOUNT);
     int x = resp->iovcnt;
+#if MPI_DEBUG
+    printf("\t [%d] x : %d\n", tid, x);
+#endif
     resp->iov[x].iov_base = (void *)buf;
     resp->iov[x].iov_len = len;
     resp->iovcnt++;
+#if MPI_DEBUG
+    printf("\t [%d] resp->tosend(prev) : %d\n", tid, resp->tosend);
+#endif
     resp->tosend += len;
-}
+#if MPI_DEBUG
+    printf("\t [%d] resp->iovcnt : %d\n", tid, resp->iovcnt);
+    printf("\t [%d] resp->iov[x].iov_len : %d\n", tid, resp->iov[x].iov_len);
+    printf("\t [%d] resp->iov[x].iov_base : %s\n", tid, resp->iov[x].iov_base);
+    printf("\t [%d] resp->tosend(next) : %d\n", tid, resp->tosend);
+#endif
+} 
 
 // Notes that an IOV should be handled as a chunked item header.
 // TODO: I'm hoping this isn't a permanent abstraction while I learn what the
 // API should be.
 void resp_add_chunked_iov(mc_resp *resp, const void *buf, int len) {
-    printf("memcached/memcached.c :: resp_add_chunked_iov()\n");
     resp->chunked_data_iov = resp->iovcnt;
     resp->chunked_total = len;
-    resp_add_iov(resp, buf, len);
+    resp_add_iov(resp, buf, len, 0);
 }
 
 // resp_allocate and resp_free are a wrapper around read buffers which makes
@@ -1600,7 +1614,7 @@ void out_string(conn *c, const char *str) {
 
     memcpy(resp->wbuf, str, len);
     memcpy(resp->wbuf + len, "\r\n", 2);
-    resp_add_iov(resp, resp->wbuf, len + 2);
+    resp_add_iov(resp, resp->wbuf, len + 2, 0);
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: out_string()5\n");
 #endif
@@ -2097,7 +2111,7 @@ void write_and_free(conn *c, char *buf, int bytes) {
     if (buf) {
         mc_resp *resp = c->resp;
         resp->write_and_free = buf;
-        resp_add_iov(resp, buf, bytes);
+        resp_add_iov(resp, buf, bytes, 0);
         conn_set_state(c, conn_new_cmd);
     } else {
         out_of_memory(c, "SERVER_ERROR out of memory writing stats");
@@ -2969,6 +2983,8 @@ static int _transmit_pre(conn *c, struct iovec *iovs, int iovused, bool one_resp
             resp = resp->next;
             continue;
         }
+
+
         if (resp->chunked_data_iov) {
 #if ENABLE_PRINT
             printf("memcached/memcached.c :: _transmit_pre()3\n");
@@ -5402,7 +5418,7 @@ void thread_func_for_mpi(void *thread_arg){
 #if ENABLE_PRINT
         printf("********************************** memcached/memcached.c :: thread_func_for_mpi() [%d] - call mpi_drive_machine**********************************\n", thread->tid);
 #endif
-        mpi_drive_machine(&thread->client);
+        mpi_drive_machine(&thread->client, thread->tid);
     }
 }
 
@@ -5837,7 +5853,7 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
 }
 
 
-static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused) {
+static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iovused, int tid) {
     mc_resp *resp = c->resp_head;
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_pre(), resp->wbuf : %s\n", resp->wbuf);
@@ -5856,10 +5872,13 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
             resp = resp->next;
             continue;
         }
+        if(resp->chunked_data_iov > 0){ //잠시 디버깅
+            resp->chunked_data_iov = 0;
+        }
         //printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
         if (resp->chunked_data_iov) {
 //#if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
+            printf("memcached/memcached.c :: mpi_transmit_pre()3, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
 //#endif
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
@@ -5920,6 +5939,7 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
 #if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_pre()5-1\n");
 #endif
+            printf("memcached/memcached.c :: mpi_transmit_pre() 4, sizeof(struct iovec)*resp->iovcnt : %d\n", sizeof(struct iovec)*resp->iovcnt);
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
@@ -5937,7 +5957,7 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
 }
 
 
-ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
+ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_sendmsg()\n");
 #endif
@@ -5951,7 +5971,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
     memset(&msg, 0, sizeof(struct msghdr));
     msg.msg_iov = iovs;
 
-    iovused = mpi_transmit_pre(c, iovs, iovused);
+    iovused = mpi_transmit_pre(c, iovs, iovused, tid);
 
 
     if (iovused == 0) {
@@ -5967,6 +5987,8 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c) {
 
     for (int i = 0; i < iovused; i++) {
         struct iovec *iov = &msg.msg_iov[i];
+        
+        printf("memcached/memcached.c :: mpi_sendmsg() iov->iov_base : %s \n", iov->iov_base);
         memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
         offset +=iov->iov_len;
     }
@@ -6075,6 +6097,7 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
 #endif
     c->cmd = -1;
     c->substate = bin_no_state;
+    //printf("memcached/memcached.c:: mpi_reset_cmd_handler, c->resp->chunk : %d | c->resp_head->chunk : %d", c->resp->chunked_data_iov, c->resp_head->chunked_data_iov);
     if (c->item != NULL) {
 #if ENABLE_PRINT
         printf("memcached/memcached.c:: mpi_reset_cmd_handler start c->item is not null\n");
@@ -6097,6 +6120,9 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head\n");
 #endif
+#if MPI_DEBUG
+        printf("memcached/memcached.c :: mpi_reset_cmd_handler, c->resp_head->chunked_data_iov : %d\n", c->resp_head->chunked_data_iov);
+#endif
         c->state = conn_mwrite;
     } else { //여기 들어감
 #if ENABLE_PRINT
@@ -6106,7 +6132,7 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
     }
 }
 
-static void mpi_drive_machine(struct mpi_conn_info *client){
+static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_drive_machine\n");
 #endif
@@ -6182,7 +6208,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             printf("memcached/memcached.c :: mpi_drive_machine - conn_parse_cmd\n");
 #endif
             client->noreply = false;
-            if (mpi_try_read_command_ascii(client) == 0) {
+            if (mpi_try_read_command_ascii(client, tid) == 0) {
                 /* we need more data! */
                 if (client->resp_head) {
                     // Buffered responses waiting, flush in the meantime.
@@ -6194,6 +6220,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             break;
             
         case conn_nread:
+#if MPI_DEBUG
+            printf("memcached/memcached.c :: mpi_drive_machine, conn_nread, tid : %d | client->resp->chunked_data_iov : %d\n", tid, client->resp_head->chunked_data_iov);
+#endif
 #if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_nread\n");
 #endif
@@ -6344,6 +6373,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             client->state = conn_closing;
             break;
         case conn_new_cmd:
+#if MPI_DEBUG
+            if(client->resp!=NULL){
+                printf("memcached/memcached.c :: mpi_drive_machine, tid : %d | conn_new_cmd, client->resp_head->chunked_data_iov : %d\n", tid, client->resp_head->chunked_data_iov);
+            }
+#endif
 #if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_drive_machine - conn_new_cmd\n");
 #endif
@@ -6391,6 +6425,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
             break;
         case conn_write:
         case conn_mwrite:
+#if MPI_DEBUG
+            printf("memcached/memcached.c :: mpi_drive_machine, tid : %d | conn_mwrite1, client->resp->chunked_data_iov : %d\n", tid, client->resp_head->chunked_data_iov);
+#endif
             if (client->resps_suspended) {
 #if ENABLE_PRINT
                 printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1\n");
@@ -6409,9 +6446,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client){
                 break;
             }
 //#if ENABLE_PRINT
-            //printf("memcached/memcached.c :: mpi_drive_machine, conn_mwrite1, client->resp->chunked_data_iov : %d\n", client->resp->chunked_data_iov);
 //#endif
-            switch (mpi_sendmsg(client)) { //요기 들어감
+            switch (mpi_sendmsg(client, tid)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (client->state == conn_mwrite) { //요기 들어감
 #if ENABLE_PRINT
@@ -6533,7 +6569,7 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
 
     memcpy(resp->wbuf, str, len);
     memcpy(resp->wbuf + len, "\r\n", 2);
-    resp_add_iov(resp, resp->wbuf, len + 2);
+    resp_add_iov(resp, resp->wbuf, len + 2, 6);
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()5\n");
 #endif
@@ -6610,11 +6646,17 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             memset(resp, 0, sizeof(*resp));
             resp->free = false; // redundant. for clarity.
             resp->bundle = b;
+            resp->tosend=0;
         } else {
             return NULL;
         }
     }
-    return resp;
+#if MPI_DEBUG
+    printf("memcached/memcached.c :: mpi_resp_allocate(), resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
+    printf("memcached/memcached.c :: mpi_resp_allocate(), resp->tosend : %d\n", resp->tosend);
+#endif
+    resp->tosend=0;
+    return resp;    
 }
 
 bool mpi_resp_start(struct mpi_conn_info *c) {
@@ -6643,20 +6685,24 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
         printf("memcached/memcached.c :: mpi_resp_start()4\n");
 #endif
         c->resp_head = resp;
+        //printf("memcached/memcached.c :: resp_start()7, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
     }
     if (!c->resp) {
 #if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()5\n");
 #endif
         c->resp = resp;
+        //printf("memcached/memcached.c :: resp_start()7, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
     } else {
 #if ENABLE_PRINT
         printf("memcached/memcached.c :: mpi_resp_start()6\n");
 #endif
         c->resp->next = resp;
         c->resp = resp;
+        //printf("memcached/memcached.c :: resp_start()7, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
     }
 
+    c->resp->tosend=0; //error 발생으로 잠시 둠
     return true;
 }
 

@@ -165,7 +165,7 @@ static void add_bin_header(conn *c, uint16_t err, uint8_t hdr_len, uint16_t key_
     }
 
     resp->wbytes = sizeof(header->response);
-    resp_add_iov(resp, resp->wbuf, resp->wbytes);
+    resp_add_iov(resp, resp->wbuf, resp->wbytes, 0);
 }
 
 
@@ -221,7 +221,7 @@ void write_bin_error(conn *c, protocol_binary_response_status err,
     len = strlen(errstr);
     add_bin_header(c, err, 0, 0, len);
     if (len > 0) {
-        resp_add_iov(c->resp, errstr, len);
+        resp_add_iov(c->resp, errstr, len, 0);
     }
     if (swallow > 0) {
         c->sbytes = swallow;
@@ -248,7 +248,7 @@ static void write_bin_response(conn *c, void *d, int hlen, int keylen, int dlen)
         add_bin_header(c, 0, hlen, keylen, dlen);
         mc_resp *resp = c->resp;
         if (dlen > 0) {
-            resp_add_iov(resp, d, dlen);
+            resp_add_iov(resp, d, dlen, 0);
         }
     }
 
@@ -447,7 +447,7 @@ static void write_bin_miss_response(conn *c, char *key, size_t nkey) {
                 0, nkey, nkey);
         char *ofs = c->resp->wbuf + sizeof(protocol_binary_response_header);
         memcpy(ofs, key, nkey);
-        resp_add_iov(c->resp, ofs, nkey);
+        resp_add_iov(c->resp, ofs, nkey, 0);
         conn_set_state(c, conn_new_cmd);
     } else {
         write_bin_error(c, PROTOCOL_BINARY_RESPONSE_KEY_ENOENT,
@@ -526,10 +526,10 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
         // add the flags
         FLAGS_CONV(it, rsp->message.body.flags);
         rsp->message.body.flags = htonl(rsp->message.body.flags);
-        resp_add_iov(c->resp, &rsp->message.body, sizeof(rsp->message.body));
+        resp_add_iov(c->resp, &rsp->message.body, sizeof(rsp->message.body), 0);
 
         if (should_return_key) {
-            resp_add_iov(c->resp, ITEM_key(it), nkey);
+            resp_add_iov(c->resp, ITEM_key(it), nkey, 0);
         }
 
         if (should_return_value) {
@@ -544,14 +544,14 @@ static void process_bin_get_or_touch(conn *c, char *extbuf) {
                     failed = true;
                 }
             } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                resp_add_iov(c->resp, ITEM_data(it), it->nbytes - 2);
+                resp_add_iov(c->resp, ITEM_data(it), it->nbytes - 2, 0);
             } else {
                 // Allow transmit handler to find the item and expand iov's
                 resp_add_chunked_iov(c->resp, it, it->nbytes - 2);
             }
 #else
             if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                resp_add_iov(c->resp, ITEM_data(it), it->nbytes - 2);
+                resp_add_iov(c->resp, ITEM_data(it), it->nbytes - 2, 0);
             } else {
                 resp_add_chunked_iov(c->resp, it, it->nbytes - 2);
             }
@@ -855,7 +855,7 @@ static void process_bin_complete_sasl_auth(conn *c) {
     case SASL_CONTINUE:
         add_bin_header(c, PROTOCOL_BINARY_RESPONSE_AUTH_CONTINUE, 0, 0, outlen);
         if (outlen > 0) {
-            resp_add_iov(c->resp, out, outlen);
+            resp_add_iov(c->resp, out, outlen, 0);
         }
         // Immediately flush our write.
         conn_set_state(c, conn_mwrite);
