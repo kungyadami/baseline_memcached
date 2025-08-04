@@ -5939,7 +5939,7 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
 #if ENABLE_PRINT
             printf("memcached/memcached.c :: mpi_transmit_pre()5-1\n");
 #endif
-            printf("memcached/memcached.c :: mpi_transmit_pre() 4, sizeof(struct iovec)*resp->iovcnt : %d\n", sizeof(struct iovec)*resp->iovcnt);
+            //printf("memcached/memcached.c :: mpi_transmit_pre() 4, sizeof(struct iovec)*resp->iovcnt : %d\n", sizeof(struct iovec)*resp->iovcnt);
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
@@ -5988,7 +5988,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     for (int i = 0; i < iovused; i++) {
         struct iovec *iov = &msg.msg_iov[i];
         
-        printf("memcached/memcached.c :: mpi_sendmsg() iov->iov_base : %s \n", iov->iov_base);
+        //printf("memcached/memcached.c :: mpi_sendmsg() iov->iov_base : %s \n", iov->iov_base);
         memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
         offset +=iov->iov_len;
     }
@@ -6567,9 +6567,9 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
         len = strlen(str);
     }
 
-    memcpy(resp->wbuf, str, len);
-    memcpy(resp->wbuf + len, "\r\n", 2);
-    resp_add_iov(resp, resp->wbuf, len + 2, 6);
+    memcpy(resp->wbuf, str, strlen(str));
+    memcpy(resp->wbuf + strlen(str), "\r\n", 2);
+    resp_add_iov(resp, resp->wbuf, strlen(str) + 2, 6);
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_out_string()5\n");
 #endif
