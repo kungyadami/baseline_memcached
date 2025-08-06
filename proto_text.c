@@ -3499,19 +3499,16 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                   } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
 #if MPI_DEBUG
                     if(resp!=NULL && resp->tosend != 33 && resp->tosend != 35){
-                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
+                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d (%p) | resp->tosend : %d(%p)\n", tid, resp->chunked_data_iov, &resp->chunked_data_iov, resp->tosend, &resp->tosend);
                     }
 #endif
                       resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
-                    //  if(resp!=NULL && resp->tosend != 33 && resp->tosend != 35){
-                    //     printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
-                    // }
 #if MPI_DEBUG
-                        if(resp!=NULL){
-                            printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->iovcnt : %d | it->nbytes : %d\n", tid, resp->iovcnt, it->nbytes);
-                            printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
-                        }
-#endif
+                    if(resp!=NULL){
+                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->iovcnt : %d | it->nbytes : %d\n", tid, resp->iovcnt, it->nbytes);
+                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->chunked_data_iov : %d (%p)\n", tid, resp->chunked_data_iov,  &resp->chunked_data_iov);
+                    }
+#endif //여기 아래로는 안들어감
                   } else {
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
@@ -3525,8 +3522,8 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                 }
 #if MPI_DEBUG
                 if(resp!=NULL){
-                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->iovcnt : %d\n", tid, resp->iovcnt);
-                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
+                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->iovcnt : %d(%p)\n", tid, resp->iovcnt, &resp->iovcnt);
+                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->chunked_data_iov : %d(%p)\n", tid, resp->chunked_data_iov, &resp->chunked_data_iov);
                 }
 #endif
                 if (settings.verbose > 1) {
@@ -3593,7 +3590,7 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 #if ENABLE_PRINT
                 printf("memcached/proto_text.c :: mpi_process_get_command 13\n");
 #endif
-                if (!mpi_resp_start(c)) {
+                if (!mpi_resp_start(c, tid)) {
                     goto stop;
                 }
                 resp = c->resp;
@@ -3616,7 +3613,7 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 #endif
             ntokens = tokenize_command(key_token->value, tokens, MAX_TOKENS);
             key_token = tokens;
-            if (!mpi_resp_start(c)) {
+            if (!mpi_resp_start(c, tid)) {
                 goto stop;
             }
             resp = c->resp;
@@ -3642,7 +3639,7 @@ stop:
         // Kill any stacked responses we had.
         mpi_conn_release_items(c);
         // Start a new response object for the error message.
-        if (!mpi_resp_start(c)) {
+        if (!mpi_resp_start(c, tid)) {
 #if ENABLE_PRINT
             printf("memcached/proto_text.c :: mpi_process_get_command 17\n");
 #endif
@@ -3686,7 +3683,6 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
     enum store_item_type ret;
     bool is_valid = false;
     int nbytes = 0;
-
     //set 명령어를 처리한 횟수를 올려주는 코드, 근데 event library가 들어있어 이걸 사용하긴 어려울듯하다.
     // pthread_mutex_lock(&c->thread->stats.mutex);
     // c->thread->stats.slab_stats[ITEM_clsid(it)].set_cmds++;
@@ -3746,6 +3742,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
         if (c->mset_res) {
             c->noreply = false;
         }
+        //printf("memcached/proto_text.c :: mpi_complete_nread_ascii - CALL mpi_out_string() \n");
         mpi_out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
 #if ENABLE_PRINT
@@ -3768,28 +3765,15 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
             printf("memcached/proto_text.c :: mpi_complete_nread_ascii 12\n");
 #endif
           case STORED:
-#if ENABLE_PRINT
-              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), STORED\n");
-#endif
               mpi_out_string(c, "STORED"); //여기서 최종 STORED를 내뱉는듯??
-
               break;
           case EXISTS:
-#if ENABLE_PRINT
-              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), EXISTS\n");
-#endif
               mpi_out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
-#if ENABLE_PRINT
-              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), NOT_FOUND\n");
-#endif
               mpi_out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
-#if ENABLE_PRINT
-              printf("memcached/- proto_text.c :: mpi_complete_nread_ascii(), NOT_STORED\n");
-#endif
               mpi_out_string(c, "NOT_STORED");
               break;
           default:
@@ -3826,10 +3810,11 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
     assert(c != NULL);
 #if MPI_DEBUG
     if(c->resp_head!=NULL){
+        printf("memcached/proto_text.c :: mpi_process_command_ascii() tid : %d | command : %s\n",tid, command);
         printf("memcached/proto_text.c :: mpi_process_command_ascii() first, tid : %d | c->resp_head->chunked_data_iov : %d\n",tid, c->resp_head->chunked_data_iov);
     }
 #endif
-    if (!mpi_resp_start(c)) {
+    if (!mpi_resp_start(c, tid)) {
         c->state = conn_closing;
         return;
     }
@@ -3867,7 +3852,7 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gats") == 0) {
             mpi_process_get_command(c, tokens, ntokens, true, true, tid);
         } else {
-            out_string(c, "ERROR");
+            mpi_out_string(c, "ERROR");
         }
     } else if (first == 's') {
         if (strcmp(tokens[COMMAND_TOKEN].value, "set") == 0 && (comm = NREAD_SET)) {
@@ -4032,7 +4017,7 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
     if (c->rbytes == 0)
         return 0;
 
-    el = memchr(c->rcurr, '\n', c->rbytes);
+    el = memchr(c->rcurr, '\n', c->rbytes); //\n이라고 하는 바이트값을 찾는 함수
 
     if (!el) {
         if (c->rbytes > 2048) {
@@ -4083,6 +4068,7 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
     if(c->resp_head!=NULL){
         printf("memcached/proto_text.c :: mpi_try_read_command_ascii() prev, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
     }
+
     mpi_process_command_ascii(c, c->rcurr, tid);
 
     c->rbytes -= (cont - c->rcurr);

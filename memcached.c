@@ -331,7 +331,7 @@ static void settings_init(void) {
     settings.auth_file = NULL;        /* by default, not using ASCII authentication tokens */
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
-    settings.num_threads = 1;         /* N workers */
+    settings.num_threads = 4;         /* N workers */
     settings.num_threads_per_udp = 0;
     settings.prefix_delimiter = ':';
     settings.detail_enabled = 0;
@@ -1378,9 +1378,8 @@ static mc_resp* resp_allocate(conn *c) {
 }
 
 void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: resp_free()\n");
-#endif
+
+    //printf("memcached/memcached.c :: resp_free(), resp : %p\n", resp);
     mc_resp_bundle *b = resp->bundle;
 
     resp->free = true;
@@ -5411,14 +5410,10 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 void thread_func_for_mpi(void *thread_arg){
 
     struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: thread_func_for_mpi() [%d]\n", thread->tid);
-#endif
+    //printf("memcached/memcached.c :: thread_func_for_mpi() [%d] thread : %p\n", thread->tid, thread->client.thread);
     while(true){
-#if ENABLE_PRINT
-        printf("********************************** memcached/memcached.c :: thread_func_for_mpi() [%d] - call mpi_drive_machine**********************************\n", thread->tid);
-#endif
         mpi_drive_machine(&thread->client, thread->tid);
+        //printf("********************************** memcached/memcached.c :: thread_func_for_mpi() [%d] - end mpi_drive_machine**********************************\n", thread->tid);
     }
 }
 
@@ -5590,6 +5585,7 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
         mpi_conn_arr[i].rcurr = mpi_conn_arr[i].rbuf;
         mpi_conn_arr[i].rbytes = 0;
         mpi_conn_arr[i].thread = calloc(1, sizeof(LIBEVENT_THREAD));
+        //printf("memcached/memcached.c :: mpi_conn_init(), mpi_conn_arr[i].thread : %p\n", mpi_conn_arr[i].thread);
         mpi_conn_arr[i].item = NULL;
         mpi_conn_arr[i].resps_suspended = 0;
         mpi_conn_arr[i].resp=0;
@@ -5875,11 +5871,8 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
         // if(resp->chunked_data_iov > 0){ //잠시 디버깅
         //     resp->chunked_data_iov = 0;
         // }
-        //printf("memcached/memcached.c :: mpi_transmit_pre()3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
         if (resp->chunked_data_iov) {
-//#if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_transmit_pre()3, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
-//#endif
+            printf("memcached/memcached.c :: mpi_transmit_pre()3, tid : %d | resp->chunked_data_iov : %d | resp : %p\n", tid, resp->chunked_data_iov, resp);
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
@@ -6136,11 +6129,14 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_drive_machine\n");
 #endif
+
     //struct mpi_conn_info *client = &mpi_conn_arr;
     enum try_read_result res;
     bool stop = false;
     const char *str;
     int nreqs = settings.reqs_per_event;
+    //printf("memcached/memcached.c :: mpi_drive_machine - [%d]client->thread : %p\n",tid, client->thread);
+
     while(!stop){
         switch(client->state){
         case conn_listening:
@@ -6166,15 +6162,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             } else { //여기 들어감
                 // run accept routine if ssl is compiled + enabled
                 //여기 호출됨
-#if ENABLE_PRINT
-                printf("memcached/memcached.c :: mpi_drive_machine - call mpi_dispatch_conn_new\n");
-#endif
+                //printf("memcached/memcached.c :: mpi_drive_machine - call mpi_dispatch_conn_new, [%d] thread : %p\n", tid, client->thread);
                 mpi_dispatch_conn_new(client, conn_new_cmd, EV_READ | EV_PERSIST,
                                     READ_BUFFER_CACHED, client->transport, client->tag, client->protocol);
                 client->state=conn_new_cmd;
-#if ENABLE_PRINT
-                printf("memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new\n");
-#endif
+                //printf("memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new, [%d] thread : %p\n", tid, client->thread);
             }
             break;
         case conn_read:
@@ -6583,19 +6575,19 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
 #endif
 
     LIBEVENT_THREAD *th = c->thread;
+    //printf("memcached/memcached.c :: mpi_resp_allocate()2, tid : [%d], th : %p\n", c->rank, th);
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
 
     if (b != NULL) {
 #if ENABLE_PRINT
-        printf("memcached/memcached.c :: mpi_resp_allocate()2\n");
+        printf("memcached/memcached.c :: mpi_resp_allocate()2, tid : [%d], b : %p\n", c->rank, b);
 #endif
         for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) {
-#if ENABLE_PRINT
-                printf("memcached/memcached.c :: mpi_resp_allocate()3\n");
-#endif
+
             // loop around starting from the most likely to be free
             int x = (i + b->next_check) % MAX_RESP_PER_BUNDLE;
+            //printf("memcached/memcached.c :: mpi_resp_allocate()3, tid : [%d], i : %d, x : %d\n", c->rank, i, x);
             if (b->r[x].free) {
                 resp = &b->r[x];
                 b->next_check = x+1;
@@ -6605,7 +6597,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
 
         if (resp != NULL) {
 #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_resp_allocate()4\n");
+            printf("memcached/memcached.c :: mpi_resp_allocate()4, tid : [%d]\n", c->rank);
 #endif
             b->refcount++;
             memset(resp, 0, sizeof(*resp));
@@ -6651,10 +6643,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             return NULL;
         }
     }
-#if MPI_DEBUG
-    printf("memcached/memcached.c :: mpi_resp_allocate(), resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
-    printf("memcached/memcached.c :: mpi_resp_allocate(), resp->tosend : %d\n", resp->tosend);
-#endif
+    //printf("memcached/memcached.c :: mpi_resp_allocate() [%d] resp : %p\n", c->rank, resp);
     resp->tosend=0;
     return resp;    
 }
@@ -6851,8 +6840,6 @@ int main (int argc, char **argv) {
 
         mpi_conn_init(mpi_conn_arr, size);
 
-        int mpi_color = (rank != 0) ? 1 : MPI_UNDEFINED;
-
         // MPI_Comm new_comm;
         // MPI_Comm_split(MPI_COMM_WORLD, mpi_color, rank, &new_comm);
 
@@ -7017,6 +7004,7 @@ int main (int argc, char **argv) {
 #endif
     /* init settings */
     settings_init(); //port 번호는 11211로, 최대 연결 개수는 1024개로 기본 워커 스레드는 4개 등등 기본적인 설정 초기화 진행하는 함수
+    settings.num_threads = size-1; //스레드 개수만큼 worker 생성을 일단 했음..
     verify_default("hash_algorithm", hash_type == MURMUR3_HASH); //해시 알고리즘은 멀멀3 으로 진행
     void *storage = NULL;
 #ifdef EXTSTORE
@@ -8468,15 +8456,16 @@ int main (int argc, char **argv) {
     for(int i=0; i<size-1; i++){
         thread_args[i].tid=i+1;
         thread_args[i].client=mpi_conn_arr[i+1];
+        //printf("memcached/memcached.c :: main() - thread_args[%d].client->thread : %p\n", i+1, thread_args[i].client.thread);
+        //printf("memcached/memcached.c :: main() - mpi_conn_arr[%d].client->thread : %p\n", i, thread_args[i].client.thread);
     }
-
     for(int i=0; i<size-1; i++){
         if(pthread_create(&threads[i], NULL, thread_func_for_mpi, &thread_args[i]) != 0){
             perror("pthread_create");
             //exit(0);
         }
     }
-
+    
     for(int i=0; i<size; i++){
         pthread_join(threads[i], NULL);
     }

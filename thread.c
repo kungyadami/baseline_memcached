@@ -1296,7 +1296,8 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
 
 
     //MEMCACHED_CONN_DISPATCH(sfd, (int64_t)thread->thread_id);
-    c->thread = &threads[0];
+    c->thread = &threads[c->rank-1];
+    //printf("memcached/thread.c :: mpi_dispatch_conn_new() - &threads[%d] : %p\n", c->rank-1, &threads[c->rank-1]);
     notify_worker(thread, item);
 
 
