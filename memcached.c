@@ -139,11 +139,12 @@ enum transmit_result {
 #if ENABLE_MPI_FUNCTIONS
 
 #define NUM_MPI_RANKS 5
-#define DATA_NUM 20000
+#define DATA_NUM 1000000
 int nreqs[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_read[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_write[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_etc[NUM_MPI_RANKS];
+
 struct timespec start[NUM_MPI_RANKS];
 struct timespec end [NUM_MPI_RANKS];
 
@@ -5426,7 +5427,6 @@ void thread_func_for_mpi(void *thread_arg){
             printf("[read time] = %lu nsec\n", mpi_thread_timer_read[thread->tid]);
             printf("[write time] = %lu nsec\n", mpi_thread_timer_write[thread->tid]);
             printf("[etc time] = %lu nsec\n", mpi_thread_timer_etc[thread->tid]);
-            break;
         }
     }
 }
@@ -5673,18 +5673,18 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         c->rcurr = c->rbuf;
     }
 
-
     while(1){
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
         //MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
+        clock_gettime(CLOCK_REALTIME, &start[c->rank]);
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        clock_gettime(CLOCK_REALTIME, &end[c->rank]);
+        mpi_thread_timer_read[c->rank]+=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
+
         if (err != MPI_SUCCESS) {
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_try_read_network() MPI_Recv error 발생 \n");
-#endif
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
             MPI_Error_string(err, err_str, &len);
@@ -6004,13 +6004,10 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
 #endif
 
     assert (c != NULL);
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_sendmsg() 4 MPI_Send 전송\n");
-#endif
+    clock_gettime(CLOCK_REALTIME, &start[c->rank]);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, 0, MPI_COMM_WORLD);
-#if ENABLE_PRINT
-    printf("\t offset : %zu\n", offset);
-#endif
+    clock_gettime(CLOCK_REALTIME, &end[c->rank]);
+    mpi_thread_timer_write[c->rank]+=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
 
     if (offset >= 0) {
 
@@ -6178,7 +6175,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_read:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
+            //clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (!mpi_rbuf_alloc(client)) { //여기는 안들어감
                 client->state = conn_closing;
                 break;
@@ -6187,23 +6184,23 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             switch(res){
                 case READ_NO_DATA_RECEIVED: //여기 안들어감
                     client->state = conn_waiting;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                    //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                    //mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_DATA_RECEIVED: //여기 들어감 -> conn_parse_cmd로 변경
                     client->state = conn_parse_cmd;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                    //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                    //mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_ERROR: //여기 안들어감
                     client->state = conn_closing;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                    //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                    //mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_MEMORY_ERROR: /* Failed to allocate more memory */ //여기 안들어감
                     /* State already set by try_read_network */
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                    //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                    //mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
             }
             break;
@@ -6416,7 +6413,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             break;
         case conn_write:
         case conn_mwrite:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
+            //clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (client->resps_suspended) {
                 LIBEVENT_THREAD *t = client->thread;
                 // FIXME: carefully check or document somewhere that submit
@@ -6429,8 +6426,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 }
 
                 stop = true;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             switch (mpi_sendmsg(client, tid)) { //요기 들어감
@@ -6449,21 +6446,21 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                         fprintf(stderr, "Unexpected state %d\n", client->state);
                     client->state = conn_closing;
                 }
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 nreqs[client->rank]++;
                 break;
 
             case TRANSMIT_INCOMPLETE:
             case TRANSMIT_HARD_ERROR:
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;                   /* Continue in state machine. */
 
             case TRANSMIT_SOFT_ERROR:
                 stop = true;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
+                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
+                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             break;
