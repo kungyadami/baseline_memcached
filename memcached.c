@@ -144,6 +144,7 @@ int nreqs[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_read[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_write[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_etc[NUM_MPI_RANKS];
+unsigned long mpi_thread_timer_recv[NUM_MPI_RANKS];
 
 struct timespec start[NUM_MPI_RANKS];
 struct timespec end [NUM_MPI_RANKS];
@@ -5679,14 +5680,14 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         memset(c->rbuf, 0, avail);
         //MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
-        //clock_gettime(CLOCK_REALTIME, &start[c->rank]);
-        pid_t pid = getpid();  // 현재 프로세스 ID
-        pid_t tid = syscall(SYS_gettid);
-        printf("Process ID: %d | TID : %d\n", pid, tid);
+        clock_gettime(CLOCK_REALTIME, &start[c->rank]);
+        // pid_t pid = getpid();  // 현재 프로세스 ID
+        // pid_t tid = syscall(SYS_gettid);
+        // printf("Process ID: %d | TID : %d\n", pid, tid);
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        //clock_gettime(CLOCK_REALTIME, &end[c->rank]);
-        //mpi_thread_timer_read[c->rank]+=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
-
+        clock_gettime(CLOCK_REALTIME, &end[c->rank]);
+        mpi_thread_timer_recv[c->rank]=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
+        printf("recv time : %lu\n", mpi_thread_timer_recv[c->rank]);
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
