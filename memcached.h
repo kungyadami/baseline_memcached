@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <grp.h>
 #include <signal.h>
+#include <sys/syscall.h> //yedam
 /* need this to get IOV_MAX on some platforms. */
 #ifndef __need_IOV_MAX
 #define __need_IOV_MAX

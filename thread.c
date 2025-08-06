@@ -398,7 +398,6 @@ static void create_worker(void *(*func)(void *), void *arg) {
                 strerror(ret));
         exit(1);
     }
-
     thread_setname(((LIBEVENT_THREAD*)arg)->thread_id, "mc-worker");
 }
 
