@@ -139,12 +139,13 @@ enum transmit_result {
 #if ENABLE_MPI_FUNCTIONS
 
 #define NUM_MPI_RANKS 5
-#define DATA_NUM 100000
+#define DATA_NUM 10000
 int nreqs[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_read[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_write[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_etc[NUM_MPI_RANKS];
 unsigned long mpi_thread_timer_recv[NUM_MPI_RANKS];
+unsigned long mpi_thread_timer_send[NUM_MPI_RANKS];
 
 struct timespec start[NUM_MPI_RANKS];
 struct timespec end [NUM_MPI_RANKS];
@@ -342,7 +343,7 @@ static void settings_init(void) {
     settings.auth_file = NULL;        /* by default, not using ASCII authentication tokens */
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
-    settings.num_threads = 4;         /* N workers */
+    settings.num_threads = 1;         /* N workers */
     settings.num_threads_per_udp = 0;
     settings.prefix_delimiter = ':';
     settings.detail_enabled = 0;
@@ -5418,19 +5419,19 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 
 #if ENABLE_MPI_FUNCTIONS
 
-void thread_func_for_mpi(void *thread_arg){
+// void thread_func_for_mpi(void *thread_arg){
 
-    struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
-    //printf("memcached/memcached.c :: thread_func_for_mpi() [%d] thread : %p\n", thread->tid, thread->client.thread);
-    while(true){
-        mpi_drive_machine(&thread->client, thread->tid);
-        if(nreqs[thread->tid] == DATA_NUM){
-            printf("[read time] = %lu nsec\n", mpi_thread_timer_read[thread->tid]);
-            printf("[write time] = %lu nsec\n", mpi_thread_timer_write[thread->tid]);
-            printf("[etc time] = %lu nsec\n", mpi_thread_timer_etc[thread->tid]);
-        }
-    }
-}
+//     struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
+//     //printf("memcached/memcached.c :: thread_func_for_mpi() [%d] thread : %p\n", thread->tid, thread->client.thread);
+//     while(true){
+//         mpi_drive_machine(&thread->client, thread->tid);
+//         if(nreqs[thread->tid] == DATA_NUM){
+//             printf("[read time] = %lu nsec\n", mpi_thread_timer_read[thread->tid]);
+//             printf("[write time] = %lu nsec\n", mpi_thread_timer_write[thread->tid]);
+//             printf("[etc time] = %lu nsec\n", mpi_thread_timer_etc[thread->tid]);
+//         }
+//     }
+// }
 
 bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c) {
     // Might as well start with x2 and work from there.
@@ -5592,8 +5593,10 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_init()\n");
 #endif
-    for(int i=1; i<size; i++){ // mpi_conn_arr[0] == server로 일단 지정
-        mpi_conn_arr[i].rank = i;
+    int server_size = size/2;
+
+    for(int i=0; i<server_size; i++){ // mpi_conn_arr[0] == server로 일단 지정
+        mpi_conn_arr[i].rank = i+server_size;
         mpi_conn_arr[i].state = conn_listening;
         mpi_conn_arr[i].rsize = READ_BUFFER_SIZE; //16kb
         mpi_conn_arr[i].rbuf = NULL;
@@ -5667,6 +5670,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 #endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
+    int rank;
 
     if (c->rcurr != c->rbuf) {
         if (c->rbytes > 0) /* otherwise there's nothing to copy */
@@ -5678,16 +5682,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
-        //MPI_Recv(client->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
-        clock_gettime(CLOCK_REALTIME, &start[c->rank]);
-        // pid_t pid = getpid();  // 현재 프로세스 ID
-        // pid_t tid = syscall(SYS_gettid);
-        // printf("Process ID: %d | TID : %d\n", pid, tid);
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        clock_gettime(CLOCK_REALTIME, &end[c->rank]);
-        mpi_thread_timer_recv[c->rank]=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
-        printf("recv time : %lu\n", mpi_thread_timer_recv[c->rank]);
+
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
@@ -5977,6 +5974,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
     struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
     int iovused = 0;
+    int rank;
 
     // init the msg.
     memset(&msg, 0, sizeof(struct msghdr));
@@ -6008,11 +6006,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
 #endif
 
     assert (c != NULL);
-    clock_gettime(CLOCK_REALTIME, &start[c->rank]);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, 0, MPI_COMM_WORLD);
-    clock_gettime(CLOCK_REALTIME, &end[c->rank]);
-    mpi_thread_timer_write[c->rank]+=((end[c->rank].tv_sec-start[c->rank].tv_sec)*BILLION)+end[c->rank].tv_nsec-start[c->rank].tv_nsec;
-
     if (offset >= 0) {
 
         pthread_mutex_lock(&c->thread->stats.mutex);
@@ -6149,7 +6143,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
     while(!stop){
         switch(client->state){
         case conn_listening:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             bool reject;
             if (settings.maxconns_fast) {
                 reject = client->rank >= settings.maxconns - 1;
@@ -6175,11 +6168,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 client->state=conn_new_cmd;
                 //printf("memcached/memcached.c :: mpi_drive_machine - end dispatch_conn_new, [%d] thread : %p\n", tid, client->thread);
             }
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_read:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (!mpi_rbuf_alloc(client)) { //여기는 안들어감
                 client->state = conn_closing;
                 break;
@@ -6188,29 +6178,20 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             switch(res){
                 case READ_NO_DATA_RECEIVED: //여기 안들어감
                     client->state = conn_waiting;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_DATA_RECEIVED: //여기 들어감 -> conn_parse_cmd로 변경
                     client->state = conn_parse_cmd;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_ERROR: //여기 안들어감
                     client->state = conn_closing;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 case READ_MEMORY_ERROR: /* Failed to allocate more memory */ //여기 안들어감
                     /* State already set by try_read_network */
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_read[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
             }
             break;
             
         case conn_parse_cmd:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             client->noreply = false;
             if (mpi_try_read_command_ascii(client, tid) == 0) {
                 /* we need more data! */
@@ -6221,16 +6202,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     client->state = conn_waiting;
                 }
             }
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
             
         case conn_nread:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (client->rlbytes == 0) {
                 mpi_complete_nread_ascii(client);
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
@@ -6240,8 +6216,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     fprintf(stderr, "Invalid rlbytes to read: len %d\n", client->rlbytes);
                 }
                 client->state = conn_closing;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
@@ -6255,14 +6229,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     client->rcurr += tocopy;
                     client->rbytes -= tocopy;
                     if (client->rlbytes == 0) {
-                        clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                        mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                         break;
                     }
                 }
 
                 /*  now try reading from the socket */
-                printf("conn_nread()2\n");
                 res = mpi_try_read_network(client);
                 if (res > 0) {
                     pthread_mutex_lock(&client->thread->stats.mutex);
@@ -6273,15 +6244,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     }
                     client->ritem += res;
                     client->rlbytes -= res;
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 }
             } else {
                 res = mpi_read_into_chunked_item(client);
                 if (res > 0){
-                    clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                    mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                     break;
                 }
             }
@@ -6289,16 +6256,12 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             if (res == 0) { /* end of stream */
                 client->close_reason = NORMAL_CLOSE;
                 client->state = conn_closing;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
             if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 client->state = conn_closing;
                 stop = true;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
@@ -6314,8 +6277,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 // fine. This swallow semms to be the only other case.
                 client->set_stale = false;
                 client->mset_res = false;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             /* otherwise we have a real error, on which we close the connection */
@@ -6328,16 +6289,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                         (int)client->rlbytes, (int)client->rsize);
             }
             client->state = conn_closing;
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_swallow:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             /* we are reading sbytes and throwing them away */
             if (client->sbytes <= 0) {
                 client->state = conn_new_cmd;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
@@ -6347,48 +6303,36 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 client->sbytes -= tocopy;
                 client->rcurr += tocopy;
                 client->rbytes -= tocopy;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
 
             /*  now try reading from the socket */
             //res = c->read(c, c->rbuf, c->rsize > c->sbytes ? c->sbytes : c->rsize);
-            printf("conn_swallow()\n");
             res = mpi_try_read_network(client);
             if (res > 0) {
                 pthread_mutex_lock(&client->thread->stats.mutex);
                 client->thread->stats.bytes_read += res;
                 pthread_mutex_unlock(&client->thread->stats.mutex);
                 client->sbytes -= res;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             if (res == 0) { /* end of stream */
                 client->close_reason = NORMAL_CLOSE;
                 client->state = conn_closing;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             if (res == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 client->state = conn_closing;
                 stop = true;
-                clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             /* otherwise we have a real error, on which we close the connection */
             if (settings.verbose > 0)
                 fprintf(stderr, "Failed to read, and not due to blocking\n");
             client->state = conn_closing;
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_new_cmd:
             //--nreqs;
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (nreqs >= 0) {
                 mpi_reset_cmd_handler(client); //여기로 들어감
             } else if (client->resp_head) { //여기 안들어감
@@ -6403,21 +6347,15 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 }
                 stop = true;
             }
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
 
         case conn_waiting:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             mpi_rbuf_release(client);
             client->state=conn_read;
             stop = true;
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_write:
         case conn_mwrite:
-            //clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             if (client->resps_suspended) {
                 LIBEVENT_THREAD *t = client->thread;
                 // FIXME: carefully check or document somewhere that submit
@@ -6430,8 +6368,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 }
 
                 stop = true;
-                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             switch (mpi_sendmsg(client, tid)) { //요기 들어감
@@ -6450,30 +6386,21 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                         fprintf(stderr, "Unexpected state %d\n", client->state);
                     client->state = conn_closing;
                 }
-                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 nreqs[client->rank]++;
                 break;
 
             case TRANSMIT_INCOMPLETE:
             case TRANSMIT_HARD_ERROR:
-                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;                   /* Continue in state machine. */
 
             case TRANSMIT_SOFT_ERROR:
                 stop = true;
-                //clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-                //mpi_thread_timer_write[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
                 break;
             }
             break;
         case conn_closing:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             //conn_close(client);
             stop = true;
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
 
         case conn_closed:
@@ -6481,12 +6408,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             abort();
             break;
         case conn_io_queue:
-            clock_gettime(CLOCK_REALTIME, &start[client->rank]);
             /* Woke up while waiting for an async return, but not ready. */
             client->state = conn_io_pending;
             stop = true;
-            clock_gettime(CLOCK_REALTIME, &end[client->rank]);
-            mpi_thread_timer_etc[client->rank]+=((end[client->rank].tv_sec-start[client->rank].tv_sec)*BILLION)+end[client->rank].tv_nsec-start[client->rank].tv_nsec;
             break;
         case conn_io_pending:
             /* Should not be reachable */
@@ -6813,17 +6737,17 @@ int main (int argc, char **argv) {
         //char processor_name[MPI_MAX_PROCESSOR_NAME];
         //int name_len;
 
-        //MPI_Init(&argc, &argv); // 초기화
-        int mpi_provided;
-        MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_provided);
+        MPI_Init(&argc, &argv); // 초기화
+        //int mpi_provided;
+        //MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_provided);
 
-        if (mpi_provided < MPI_THREAD_MULTIPLE) {
-            fprintf(stderr, "Error: MPI does not support THREAD_MULTIPLE\n");
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
+        // if (mpi_provided < MPI_THREAD_MULTIPLE) {
+        //     fprintf(stderr, "Error: MPI does not support THREAD_MULTIPLE\n");
+        //     MPI_Abort(MPI_COMM_WORLD, 1);
+        // }
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
         MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
-        mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size);
+        mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*size-2);
 
         mpi_conn_init(mpi_conn_arr, size);
 
@@ -6836,8 +6760,6 @@ int main (int argc, char **argv) {
         //     printf("Rank %d skipped the barrier\n", rank);
         // }
 
-        // mpi_conn_arr[1].rank = 1;
-        // mpi_conn_arr[1].state = conn_read;
         //MPI_Get_processor_name(processor_name, &name_len);
 
     #endif
@@ -6973,9 +6895,7 @@ int main (int argc, char **argv) {
 #endif
         NULL
     };
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[3]\n");
-#endif
+
     if (!sanitycheck()) { //안 들어감
         free(meta);
         return EX_OSERR;
@@ -6986,18 +6906,14 @@ int main (int argc, char **argv) {
     signal(SIGTERM, sig_handler);
     signal(SIGHUP, sighup_handler);
     signal(SIGUSR1, sig_usrhandler);
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[4]\n");
-#endif
+
     /* init settings */
     settings_init(); //port 번호는 11211로, 최대 연결 개수는 1024개로 기본 워커 스레드는 4개 등등 기본적인 설정 초기화 진행하는 함수
-    settings.num_threads = size-1; //스레드 개수만큼 worker 생성을 일단 했음..
+    //settings.num_threads = size-1; //스레드 개수만큼 worker 생성을 일단 했음..
     verify_default("hash_algorithm", hash_type == MURMUR3_HASH); //해시 알고리즘은 멀멀3 으로 진행
     void *storage = NULL;
 #ifdef EXTSTORE
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[5]\n");
-#endif
+
     void *storage_cf = storage_init_config(&settings); //들어감
     bool storage_enabled = false;
     if (storage_cf == NULL) {
@@ -7008,9 +6924,7 @@ int main (int argc, char **argv) {
 
     /* set stderr non-buffering (for running under, say, daemontools) */
     setbuf(stderr, NULL);
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[6]\n");
-#endif
+
     char *shortopts =
           "a:"  /* access mask for unix socket */
           "A"   /* enable admin shutdown command */
@@ -7092,17 +7006,12 @@ int main (int argc, char **argv) {
     };
     int optindex;
     while (-1 != (c = getopt_long(argc, argv, shortopts, longopts, &optindex))) {
-#if ENABLE_PRINT
-        printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG, argv : %s\n", *argv);
-#endif
+
 #else
     while (-1 != (c = getopt(argc, argv, shortopts))) {
 #endif
         if (optarg) {
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: int main - optarg : %s\n", optarg);
-            printf("memcached/memcached.c :: int main - optarg[0] : %c\n", optarg[0]);
-#endif
+
             while(isspace(optarg[0])) {
                 optarg++;
             }
@@ -7139,9 +7048,6 @@ int main (int argc, char **argv) {
             udp_specified = true;
             break;
         case 'p':
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'p'\n");
-#endif
             settings.port = atoi(optarg);
             tcp_specified = true;
             break;
@@ -7154,9 +7060,6 @@ int main (int argc, char **argv) {
 #endif /* #ifndef DISABLE_UNIX_SOCKET */
             break;
         case 'm':
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'm'\n");
-#endif
             settings.maxbytes = ((size_t)atoi(optarg)) * 1024 * 1024;
             break;
         case 'M':
@@ -7182,15 +7085,9 @@ int main (int argc, char **argv) {
             lock_memory = true;
             break;
         case 'v':
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'v'\n");
-#endif
             settings.verbose++;
             break;
         case 'l':
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l'\n");
-#endif
             if (settings.inter != NULL) { //여기 안들어감
                 if (strstr(settings.inter, optarg) != NULL) {
                     break;
@@ -7205,9 +7102,6 @@ int main (int argc, char **argv) {
                 free(settings.inter);
                 settings.inter = p;
             } else { //여기 들어감
-#if ENABLE_PRINT
-                printf("memcached/memcached.c :: int main - HAVE_GETOPT_LONG case 'l' 3\n");
-#endif
                 settings.inter= strdup(optarg); //여기에 있는 settings.inter가 ip주소가 됨
             }
             break;
@@ -8434,28 +8328,33 @@ int main (int argc, char **argv) {
 
     /*yedam code*/
 
+    // pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*size-1);
+    // struct mpi_conn_thread *thread_args = (struct mpi_conn_thread*)malloc(sizeof(struct mpi_conn_thread)*size-1);
+
+    // for(int i=0; i<size-1; i++){
+    //     thread_args[i].tid=i+1;
+    //     thread_args[i].client=mpi_conn_arr[i+1];
+    //     //printf("memcached/memcached.c :: main() - thread_args[%d].client->thread : %p\n", i+1, thread_args[i].client.thread);
+    //     //printf("memcached/memcached.c :: main() - mpi_conn_arr[%d].client->thread : %p\n", i, thread_args[i].client.thread);
+    // }
+    // for(int i=0; i<size-1; i++){
+    //     if(pthread_create(&threads[i], NULL, thread_func_for_mpi, &thread_args[i]) != 0){
+    //         perror("pthread_create");
+    //         //exit(0);
+    //     }
+    // }
     
-    pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*size-1);
-    struct mpi_conn_thread *thread_args = (struct mpi_conn_thread*)malloc(sizeof(struct mpi_conn_thread)*size-1);
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main() thread create, size : %d\n", size);
-#endif
-    for(int i=0; i<size-1; i++){
-        thread_args[i].tid=i+1;
-        thread_args[i].client=mpi_conn_arr[i+1];
-        //printf("memcached/memcached.c :: main() - thread_args[%d].client->thread : %p\n", i+1, thread_args[i].client.thread);
-        //printf("memcached/memcached.c :: main() - mpi_conn_arr[%d].client->thread : %p\n", i, thread_args[i].client.thread);
-    }
-    for(int i=0; i<size-1; i++){
-        if(pthread_create(&threads[i], NULL, thread_func_for_mpi, &thread_args[i]) != 0){
-            perror("pthread_create");
-            //exit(0);
+    // for(int i=0; i<size; i++){
+    //     pthread_join(threads[i], NULL);
+    // }  
+#if ENABLE_MPI_FUNCTIONS
+    while (!stop_main_loop) { //여기를 계속 들어가네 ..
+        while(true){
+            mpi_drive_machine(&mpi_conn_arr[rank], rank);
         }
     }
-    
-    for(int i=0; i<size; i++){
-        pthread_join(threads[i], NULL);
-    }
+#endif
+
 
 #if ENABLE_SOCKET_FUNCTIONS
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
