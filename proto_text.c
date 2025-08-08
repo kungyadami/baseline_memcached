@@ -3771,6 +3771,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
               mpi_out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
+            printf("here\n");
               mpi_out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
