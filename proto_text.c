@@ -293,9 +293,9 @@ void complete_nread_ascii(conn *c) {
               out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
-#if ENABLE_PRINT
+//#if ENABLE_PRINT
               printf("memcached/- proto_text.c :: complete_nread_ascii(), NOT_FOUND\n");
-#endif
+//#endif
               out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
@@ -774,7 +774,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                     fprintf(stderr, ">%d sending key ", c->sfd);
 #endif
                     for (ii = 0; ii < it->nkey; ++ii) {
-                        fprintf(stderr, "%c", key[ii]);
+                        //fprintf(stderr, "%c", key[ii]);
                     }
                     fprintf(stderr, "\n");
                 }
@@ -3535,9 +3535,13 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                     fprintf(stderr, ">%d sending key ", c->rank);
 #endif
                     for (ii = 0; ii < it->nkey; ++ii) {
+#if ENABLE_FPRINT
                         fprintf(stderr, "%c", key[ii]);
+#endif
                     }
+#if ENABLE_FPRINT
                     fprintf(stderr, "\n");
+#endif
                 }
                 /* item_get() has incremented it->refcount for us */
                 pthread_mutex_lock(&c->thread->stats.mutex);
@@ -3771,7 +3775,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
               mpi_out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
-            printf("here\n");
+            printf("memcached/proto_text.c :: mpi_complete_nread_ascii NOT FOUND\n");
               mpi_out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:

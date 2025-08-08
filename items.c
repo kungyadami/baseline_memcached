@@ -1052,25 +1052,22 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
 #endif
     item *it = assoc_find(key, nkey, hv);
     if (it != NULL) {
-#if ENABLE_PRINT
-        printf("[yedam] items.c :: do_item_get() 3\n");
-#endif
         refcount_incr(it);
     }
     int was_found = 0;
 
-    if (settings.verbose > 2) {
-#if ENABLE_PRINT
-        printf("[yedam] items.c :: do_item_get() 4\n");
-#endif
+    if (settings.verbose < 2) {
+//#if ENABLE_PRINT
+        //printf("[yedam] items.c :: do_item_get() 4, settings.verbose : %d\n", settings.verbose);
+//#endif
         int ii;
         if (it == NULL) {
-            fprintf(stderr, "> NOT FOUND ");
+            //fprintf(stderr, "> NOT FOUND ");
         } else if (was_found) {
             fprintf(stderr, "> FOUND KEY ");
         }
         for (ii = 0; ii < nkey; ++ii) {
-            fprintf(stderr, "%c", key[ii]);
+            //fprintf(stderr, "%c", key[ii]);
         }
     }
 #if ENABLE_PRINT
@@ -1123,15 +1120,14 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
         }
     }
     //printf("[yedam] items.c :: do_item_get() ?? t->l : %d\n", t->l);
-    if (settings.verbose > 2)
-        fprintf(stderr, "\n");
+    if (settings.verbose > 2){
+        //fprintf(stderr, "\n");
+    }
     /* For now this is in addition to the above verbose logging. */
     //yedam
     // LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
     //            nkey, (it) ? it->nbytes : 0, (it) ? ITEM_clsid(it) : 0, t->cur_sfd);
-#if ENABLE_PRINT
-    printf("[yedam] items.c :: do_item_get() 10\n"); //여기에 들어감
-#endif
+
     return it;
 }
 

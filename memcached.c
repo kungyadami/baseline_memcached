@@ -1942,9 +1942,9 @@ static int _store_item_copy_data(int comm, item *old_it, item *new_it, item *add
 enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const uint32_t hv, int *nbytes, uint64_t *cas, uint64_t cas_in, bool cas_stale) {
     //여기 자체가 데이터를 저장하기 위해서 찾는 공간
     char *key = ITEM_key(it);
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: do_store_item(), it->time : %d\n", it->time);
-#endif
+//#if ENABLE_PRINT
+    //printf("memcached/memcached.c :: do_store_item(), it->time : %d\n", it->time);
+//#endif
     item *old_it = do_item_get(key, it->nkey, hv, t, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
 
@@ -7085,7 +7085,8 @@ int main (int argc, char **argv) {
             lock_memory = true;
             break;
         case 'v':
-            settings.verbose++;
+            //settings.verbose++;
+            settings.verbose=1;
             break;
         case 'l':
             if (settings.inter != NULL) { //여기 안들어감
