@@ -5596,6 +5596,7 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
     int server_size = size/2;
 
     for(int i=0; i<server_size; i++){ // mpi_conn_arr[0] == server로 일단 지정
+        //printf("worker rank : %d\n", i+server_size);
         mpi_conn_arr[i].rank = i+server_size;
         mpi_conn_arr[i].state = conn_listening;
         mpi_conn_arr[i].rsize = READ_BUFFER_SIZE; //16kb
@@ -5682,7 +5683,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
-
+        //printf("c->rank : %d\n", c->rank);
         int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, c->rank, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
 
         if (err != MPI_SUCCESS) {
@@ -6137,11 +6138,13 @@ static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
 static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 
     //struct mpi_conn_info *client = &mpi_conn_arr;
+
     enum try_read_result res;
     bool stop = false;
     const char *str;
     while(!stop){
         switch(client->state){
+        printf("c->rank : %d\n", client->rank);
         case conn_listening:
             bool reject;
             if (settings.maxconns_fast) {
@@ -8325,7 +8328,6 @@ int main (int argc, char **argv) {
 #endif
      //printf("memcached/memcached.c :: main(), libevent thread->open_bundle : %d\n", )
     /* enter the event loop */
-    MPI_Barrier(MPI_COMM_WORLD);
 
     /*yedam code*/
 

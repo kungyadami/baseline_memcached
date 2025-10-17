@@ -108,8 +108,8 @@ LIBS="$HOME/mvapich-3.0/install/lib:$HOME/mvapich-3.0/install/mvapich/lib:$HOME/
   -genv LD_LIBRARY_PATH "$LIBS" \
   -genv UCX_TLS rc \
   -genv UCX_NET_DEVICES mlx5_0:1 \
-  -genv UCX_LOG_LEVEL info \
+  -genv UCX_LOG_LEVEL error \
   -l -print-all-exitcodes \
   \
-  -np 1 --wdir "$HOME/Memcached"   ltrace -e ibv_post_send ./memcached -p 10122 -m 512 -l 114.70.21.66 : \
-  -np 1 --wdir "$HOME/mpi_examples" ./memcached_example1
+  -np 16 --wdir "$HOME/Memcached"   ltrace -e ibv_post_send ./memcached -p 10122 -m 4096 -l 114.70.21.66 : \
+  -np 16 --wdir "$HOME/mpi_examples" ./memcached_example1
