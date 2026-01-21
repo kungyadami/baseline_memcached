@@ -1,2 +1,2 @@
-KonGoose:8
-konduck1:8
+KonGoose:4
+konduck1:4

@@ -27,11 +27,11 @@
 
 int data_num=0;
 
+extern unsigned long hash_time[4];
+extern volatile int temp_rank;
+extern int old_hash_table_num;
+extern int primary_hash_table_num;
 
-#if HASH_BREAKDOWN
-    extern unsigned long hash_time[4];
-    extern volatile int temp_rank;
-#endif
 
 
 static pthread_cond_t maintenance_cond = PTHREAD_COND_INITIALIZER;
@@ -97,9 +97,12 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : 해시 버킷
     //printf("assoc_find\n");
+    struct timespec hash_op_start, hash_op_end;
+    #if HASH_BREAKDOWN
+        clock_gettime(CLOCK_REALTIME, &hash_op_start);
+    #endif
     item *it;
     uint64_t oldbucket;
-
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
         it = old_hashtable[oldbucket];
     } else {
@@ -122,6 +125,11 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
     //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
+    #if HASH_BREAKDOWN
+        clock_gettime(CLOCK_REALTIME, &hash_op_end);
+        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
+    #endif
+
     return ret;
 }
 
@@ -154,12 +162,14 @@ static void assoc_expand(void) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_expand()\n");
 #endif
+    pthread_t tid = pthread_self();
+    //printf("[%lu] assoc_expand\n",tid);
     old_hashtable = primary_hashtable;
 
     primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
     if (primary_hashtable) {
         if (settings.verbose > 1)
-            fprintf(stderr, "Hash table expansion starting\n");
+            //fprintf(stderr, "Hash table expansion starting\n");
         hashpower++;
         expanding = true;
         expand_bucket = 0;
@@ -175,8 +185,11 @@ static void assoc_expand(void) {
 }
 
 void assoc_start_expand(uint64_t curr_items) {
+    pthread_t tid = pthread_self();
+    //printf("[%lu] assoc_start_expand, curr_items : %d\n",tid, curr_items);
     if (pthread_mutex_trylock(&maintenance_lock) == 0) {
         if (curr_items > (hashsize(hashpower) * 3) / 2 && hashpower < HASHPOWER_MAX) {
+            //printf("[%lu] assoc_start_expand, maintenance cond에게 시그널 보냄\n",tid);
             pthread_cond_signal(&maintenance_cond);
         }
         pthread_mutex_unlock(&maintenance_lock);
@@ -188,10 +201,6 @@ int assoc_insert(item *it, const uint32_t hv) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_insert()\n");
 #endif
-        struct timespec hash_op_start, hash_op_end;
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_start);
-    #endif
     uint64_t oldbucket;
 
     //assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined */
@@ -205,10 +214,6 @@ int assoc_insert(item *it, const uint32_t hv) {
     }
 
     MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey);
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_end);
-        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
-    #endif
     return 1;
 }
 
@@ -216,7 +221,7 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_delete()\n");
 #endif
-    //printf("memcached::assoc.c :: assoc_delete()\n");
+    printf("memcached::assoc.c :: assoc_delete()\n");
     item **before = _hashitem_before(key, nkey, hv);
 
     if (*before) {
@@ -277,8 +282,8 @@ static void *assoc_maintenance_thread(void *arg) {
                     stats_state.hash_bytes -= hashsize(hashpower - 1) * sizeof(void *);
                     stats_state.hash_is_expanding = false;
                     STATS_UNLOCK();
-                    if (settings.verbose > 1)
-                        fprintf(stderr, "Hash table expansion done\n");
+                    if (settings.verbose > 1){}
+                        // fprintf(stderr, "Hash table expansion done\n");
                 }
 
             } else {
@@ -304,9 +309,14 @@ static void *assoc_maintenance_thread(void *arg) {
              * allow dynamic hash table expansion without causing significant
              * wait times.
              */
+            pthread_t tid = pthread_self();
+            //printf("[%lu] assoc_maintenance_thread1\n",tid);
             if (do_run_maintenance_thread) {
+                //printf("[%lu] assoc_maintenance_thread2\n",tid);
                 pause_threads(PAUSE_ALL_THREADS);
+                //printf("[%lu] assoc_maintenance_thread3\n",tid);
                 assoc_expand();
+                //printf("[%lu] assoc_maintenance_thread4\n",tid);
                 pause_threads(RESUME_ALL_THREADS);
             }
         }
@@ -369,7 +379,7 @@ void *assoc_get_iterator(void) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_get_iterator()\n");
 #endif
-    printf("memcached::assoc.c :: assoc_get_iterator()\n");
+    //printf("memcached::assoc.c :: assoc_get_iterator()\n");
     struct assoc_iterator *iter = calloc(1, sizeof(struct assoc_iterator));
     if (iter == NULL) {
         return NULL;

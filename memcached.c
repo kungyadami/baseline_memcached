@@ -55,6 +55,8 @@ int mpi_client_size;
 unsigned long hash_time[16];
 volatile int temp_rank=0;
 unsigned long MPI_recv_time, MPI_send_time;
+int old_hash_table_num=0;
+int primary_hash_table_num=0;
 
 #ifdef HAVE_GETOPT_LONG
 #include <getopt.h> //프로그램 실행시 인자 처리 잘해주는 라이브러리
@@ -6383,6 +6385,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
+                printf("old_table_num : %d\n", old_hash_table_num);
+                printf("primary_table_num : %d\n", primary_hash_table_num);
             #endif
 
             sleep(10);
@@ -6546,36 +6550,36 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
     return true;
 }
 
-// static volatile bool running = true;
-// static time_t monotonic_start;
-// void* assoc_expand_check_thread(void *arg){
+static volatile bool running = true;
+static time_t monotonic_start;
+void* assoc_expand_check_thread(void *arg){
 
-//     struct timespec ts;
+    struct timespec ts;
 
-//     clock_gettime(CLOCK_MONOTONIC, &ts);
-//     monotonic_start = ts.tv_sec;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    monotonic_start = ts.tv_sec;
 
-//     while (running) {
-//         sleep(1);
+    while (running) {
+        sleep(1);
 
-//         clock_gettime(CLOCK_MONOTONIC, &ts);
-//         current_time = ts.tv_sec - monotonic_start;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        current_time = ts.tv_sec - monotonic_start;
 
-//         // hash table expansion check
-//         assoc_start_expand(stats_state.curr_items);
+        // hash table expansion check
+        assoc_start_expand(stats_state.curr_items);
 
-//         // HUP signal 처리 등
-//     }
-//     return NULL;
-// }
+        // HUP signal 처리 등
+    }
+    return NULL;
+}
 
-// pthread_t expand_tid;
+pthread_t expand_tid;
 static void mpi_clock_handler(const evutil_socket_t fd, const short which, void *arg) {
 
     //printf("memcached/memcached.c :: mpi_clock_handler()\n");
     struct timeval t = {.tv_sec = 1, .tv_usec = 0};
 
-    // pthread_create(&expand_tid, NULL, assoc_expand_check_thread, NULL);
+    pthread_create(&expand_tid, NULL, assoc_expand_check_thread, NULL);
 
     // While we're here, check for hash table expansion.
     // This function should be quick to avoid delaying the timer.

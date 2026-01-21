@@ -130,5 +130,5 @@ LIBS="$HOME/mvapich-3.0/install/lib:$HOME/mvapich-3.0/install/mvapich/lib:$HOME/
   -genv UCX_LOG_LEVEL error \
   -l -print-all-exitcodes \
   \
-  -np 8 --wdir "$HOME/Memcached" ./memcached -p 10122 -m 4096 -l 114.70.21.66 : \
-  -np 8 --wdir "$HOME/mpi_examples" ./memcached_example1
+  -np 4 --wdir "$HOME/Memcached" ./memcached -p 10122 -m 4096 -l 114.70.21.66 : \
+  -np 4 --wdir "$HOME/mpi_examples" ./memcached_example1

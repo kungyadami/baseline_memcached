@@ -135,9 +135,10 @@ void item_unlock(uint32_t hv) {
 }
 
 static void wait_for_thread_registration(int nthreads) {
-    while (init_count < nthreads) {
-        pthread_cond_wait(&init_cond, &init_lock);
-    }
+    //printf("init count : %d | nthread : %d\n", init_count, nthreads);
+    // while (init_count < nthreads) {
+    //     pthread_cond_wait(&init_cond, &init_lock);
+    // }
 }
 
 static void register_thread_initialized(void) {
@@ -152,17 +153,18 @@ static void register_thread_initialized(void) {
 
 /* Must not be called with any deeper locks held */
 void pause_threads(enum pause_thread_types type) {
-    printf("thread.c :: pause_threads\n");
+    pthread_t tid = pthread_self();
+    //printf("[%lu] thread.c :: pause_threads\n", tid);
     int i;
     bool pause_workers = false;
 
     switch (type) {
         case PAUSE_ALL_THREADS:
-            printf("thread.c :: pause_threads - PAUSE_ALL_THREADS\n");
+            //printf("[%lu] thread.c :: pause_threads - PAUSE_ALL_THREADS\n",tid);
             slab_maintenance_pause(settings.slab_rebal);
             lru_maintainer_pause();
             lru_crawler_pause();
-            printf("thread.c :: pause_threads - PAUSE_ALL_THREADS2\n");
+            //printf("[%lu] thread.c :: pause_threads - PAUSE_ALL_THREADS2\n",tid);
 #ifdef EXTSTORE
             storage_compact_pause();
             storage_write_pause();
@@ -187,21 +189,24 @@ void pause_threads(enum pause_thread_types type) {
             assert(1 == 0);
             break;
     }
-    printf("thread.c :: pause_threads2, pause_workers : %d\n",pause_workers);
+    //printf("[%lu] thread.c :: pause_threads2, pause_workers : %d\n",tid, pause_workers);
     /* Only send a message if we have one. */
     if (!pause_workers) {
-        printf("thread.c :: pause_threads3\n");
+        //printf("[%lu] thread.c :: pause_threads3\n",tid);
         return;
     }
 
     pthread_mutex_lock(&init_lock);
     init_count = 0;
     for (i = 0; i < settings.num_threads; i++) {
-        printf("thread.c :: pause_threads4\n");
+        //printf("[%lu] thread.c :: pause_threads4\n",tid);
         notify_worker_fd(&threads[i], 0, queue_pause);
     }
+    //printf("[%lu] thread.c :: pause_threads5\n",tid);
     wait_for_thread_registration(settings.num_threads);
+    //printf("[%lu] thread.c :: pause_threads6\n",tid);
     pthread_mutex_unlock(&init_lock);
+    //printf("[%lu] thread.c :: pause_threads7\n",tid);
 }
 
 // MUST not be called with any deeper locks held
@@ -1199,6 +1204,7 @@ void memcached_thread_init(int nthreads, void *arg) {
     int         i;
     int         power;
 
+    //printf("memcached/thread.c :: memcached_thread_init(), POWER_LARGEST : %d\n", POWER_LARGEST);
     //POWER_LARGEST : 256
 
     for (i = 0; i < POWER_LARGEST; i++) {

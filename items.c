@@ -23,11 +23,6 @@ static void item_unlink_q(item *it);
 static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
 
-#if HASH_BREAKDOWN
-    extern unsigned long hash_time[4];
-    extern volatile int temp_rank;
-#endif
-
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
     uint64_t evicted;
@@ -1073,14 +1068,10 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
     struct timespec hash_op_start, hash_op_end;
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_start);
-    #endif
+    // #if HASH_BREAKDOWN
+    //     clock_gettime(CLOCK_REALTIME, &hash_op_start);
+    // #endif
     item *it = assoc_find(key, nkey, hv);
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_end);
-        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
-    #endif
     if (it != NULL) {
         refcount_incr(it);
     }
@@ -1092,7 +1083,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
 //#endif
         int ii;
         if (it == NULL) {
-            //fprintf(stderr, "> NOT FOUND ");
+            //fprintf(stderr, "> NOT FOUND \n");
         } else if (was_found) {
             fprintf(stderr, "> FOUND KEY ");
         }
