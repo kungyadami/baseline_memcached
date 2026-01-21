@@ -586,7 +586,7 @@ static int storage_write(void *storage, const int clsid, const int item_age) {
                 item_replace(it, hdr_it, it_info.hv, ITEM_get_cas(it));
                 do_item_remove(hdr_it);
                 did_moves = 1;
-                LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EXTSTORE_WRITE, it, bucket);
+                //LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EXTSTORE_WRITE, it, bucket);
             } else {
                 /* Failed to write for some reason, can't continue. */
                 slabs_free(hdr_it, ITEM_clsid(hdr_it));
@@ -821,8 +821,8 @@ static int storage_compact_check(void *storage, logger *l,
     flags->drop_unread = 0;
 
     frag_limit = st.page_size * settings.ext_max_frag;
-    LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_FRAGINFO,
-            NULL, settings.ext_max_frag, frag_limit);
+    // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_FRAGINFO,
+    //         NULL, settings.ext_max_frag, frag_limit);
     st.page_data = calloc(st.page_count, sizeof(struct extstore_page_data));
     extstore_get_page_data(storage, &st);
 
@@ -1069,8 +1069,8 @@ static void storage_compact_readback(void *storage, logger *l,
     stats.extstore_compact_resc_cold += rescue_cold;
     stats.extstore_compact_resc_old += rescue_old;
     STATS_UNLOCK();
-    LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_READ_END,
-            NULL, page_id, offset, rescues, lost, skipped);
+    // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_READ_END,
+    //         NULL, page_id, offset, rescues, lost, skipped);
 }
 
 // wrap lock is held while waiting for this callback, preventing caller thread
@@ -1131,8 +1131,8 @@ static void *storage_compact_thread(void *arg) {
                     &page_id, &page_version, &page_size, &flags)) {
             page_offset = 0;
             compacting = true;
-            LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_START,
-                    NULL, page_id, page_version);
+            // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_START,
+            //         NULL, page_id, page_version);
         } else {
             pthread_cond_wait(&storage_compact_cond, &storage_compact_plock);
         }
@@ -1150,14 +1150,14 @@ static void *storage_compact_thread(void *arg) {
 
                 extstore_submit_bg(storage, &wrap.io);
             } else if (wrap.miss) {
-                LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_ABORT,
-                        NULL, page_id);
+                // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_ABORT,
+                //         NULL, page_id);
                 wrap.done = false;
                 wrap.submitted = false;
                 compacting = false;
             } else if (wrap.submitted && wrap.done) {
-                LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_READ_START,
-                        NULL, page_id, page_offset);
+                // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_READ_START,
+                //         NULL, page_id, page_offset);
                 storage_compact_readback(storage, l, flags,
                         readback_buf, page_id, page_version, page_offset,
                         settings.ext_wbuf_size);
@@ -1169,8 +1169,8 @@ static void *storage_compact_thread(void *arg) {
                 wrap.done = false;
                 wrap.submitted = false;
                 extstore_close_page(storage, page_id, page_version);
-                LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_END,
-                        NULL, page_id);
+                // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_COMPACT_END,
+                //         NULL, page_id);
                 // short cooling period between defragmentation runs.
                 usleep(MIN_STORAGE_COMPACT_SLEEP);
             }

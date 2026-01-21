@@ -99,6 +99,25 @@
 #   -genv LD_LIBRARY_PATH "$LIBS" \
 #   /bin/sh -lc 'ldd $HOME/mpi_examples/memcached_example1 | egrep "libmemcached|not found"'
 
+
+# MPIRUN=$HOME/mvapich-3.0/install/bin/mpirun
+# LIBS="$HOME/mvapich-3.0/install/lib:$HOME/mvapich-3.0/install/mvapich/lib:$HOME/libmemcached-1.0.18/libmemcached/.libs"
+
+# "$MPIRUN" \
+#   -bootstrap ssh -bootstrap-exec /usr/bin/ssh \
+#   --hostfile hosts.txt \
+#   -genv LD_LIBRARY_PATH "$LIBS" \
+#   -genv UCX_TLS rc \
+#   -genv UCX_NET_DEVICES mlx5_0:1 \
+#   -genv UCX_LOG_LEVEL error \
+#   -l -print-all-exitcodes \
+#   \
+#   -np 1 --wdir "$HOME/parameter_server" python3 parameter_server.py : \
+#   -np 1 --wdir "$HOME/Memcached" ./memcached -p 10122 -m 512 -l 114.70.21.66 : \
+#   -np 1 --wdir "$HOME/Worker" python3 worker.py
+
+
+
 MPIRUN=$HOME/mvapich-3.0/install/bin/mpirun
 LIBS="$HOME/mvapich-3.0/install/lib:$HOME/mvapich-3.0/install/mvapich/lib:$HOME/libmemcached-1.0.18/libmemcached/.libs"
 
@@ -111,5 +130,5 @@ LIBS="$HOME/mvapich-3.0/install/lib:$HOME/mvapich-3.0/install/mvapich/lib:$HOME/
   -genv UCX_LOG_LEVEL error \
   -l -print-all-exitcodes \
   \
-  -np 16 --wdir "$HOME/Memcached"   ltrace -e ibv_post_send ./memcached -p 10122 -m 4096 -l 114.70.21.66 : \
-  -np 16 --wdir "$HOME/mpi_examples" ./memcached_example1
+  -np 8 --wdir "$HOME/Memcached" ./memcached -p 10122 -m 4096 -l 114.70.21.66 : \
+  -np 8 --wdir "$HOME/mpi_examples" ./memcached_example1

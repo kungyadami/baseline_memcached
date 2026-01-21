@@ -424,7 +424,7 @@ mcp_rcontext_t *mcp_funcgen_get_rctx(lua_State *L, int fgen_ref, mcp_funcgen_t *
         // then generate a new function slot.
         int res = lua_pcall(L, 2, 1, 0);
         if (res != LUA_OK) {
-            LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(L, -1));
+            //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(L, -1));
             lua_settop(L, 0);
             return NULL;
         }
@@ -1118,7 +1118,7 @@ int mcp_process_rqueue_return(mcp_rcontext_t *rctx, int handle, mcp_resp_t *res)
         lua_rawgeti(rctx->Lc, LUA_REGISTRYINDEX, rqu->res_ref);
         lua_rawgeti(rctx->Lc, LUA_REGISTRYINDEX, rqu->req_ref);
         if (lua_pcall(rctx->Lc, 2, 2, 0) != LUA_OK) {
-            LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(rctx->Lc, -1));
+            //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(rctx->Lc, -1));
         } else if (lua_isinteger(rctx->Lc, 1)) {
             // allow overriding the result flag from the callback.
             enum mcp_rqueue_e mode = lua_tointeger(rctx->Lc, 1);

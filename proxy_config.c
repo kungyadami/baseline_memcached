@@ -205,7 +205,7 @@ static void proxy_config_stats_prep(proxy_ctx_t *ctx) {
 }
 
 static void proxy_config_reload(proxy_ctx_t *ctx) {
-    LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "start");
+    //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "start");
     STAT_INCR(ctx, config_reloads, 1);
     // gen. used for tracking object lifecycles over time.
     // ie: ensuring old things are unloaded.
@@ -224,7 +224,7 @@ static void proxy_config_reload(proxy_ctx_t *ctx) {
     if (proxy_load_config(ctx) != 0) {
         // Failed to load. log and wait for a retry.
         STAT_INCR(ctx, config_reload_fails, 1);
-        LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "failed");
+        //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "failed");
         return;
     }
 
@@ -252,7 +252,7 @@ static void proxy_config_reload(proxy_ctx_t *ctx) {
         // Code load bailed.
         if (ctx->worker_failed) {
             STAT_INCR(ctx, config_reload_fails, 1);
-            LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "failed");
+            //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "failed");
             return;
         }
     }
@@ -266,7 +266,7 @@ static void proxy_config_reload(proxy_ctx_t *ctx) {
     STAT_UL(ctx);
 
     lua_pop(ctx->proxy_state, 1); // drop config_pools return value
-    LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "done");
+    //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_CONFIG, NULL, "done");
 }
 
 // Very basic scheduler. Unsorted because we don't expect a huge list of
@@ -307,7 +307,7 @@ static void proxy_run_crons(proxy_ctx_t *ctx) {
             int res = lua_pcall(L, 0, 0, 0);
             STAT_INCR(ctx, config_cron_runs, 1);
             if (res != LUA_OK) {
-                LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(L, -1));
+                //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(L, -1));
                 STAT_INCR(ctx, config_cron_fails, 1);
                 lua_pop(L, 1); // drop error.
             }

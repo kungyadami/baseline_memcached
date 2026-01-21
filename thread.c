@@ -152,14 +152,17 @@ static void register_thread_initialized(void) {
 
 /* Must not be called with any deeper locks held */
 void pause_threads(enum pause_thread_types type) {
+    printf("thread.c :: pause_threads\n");
     int i;
     bool pause_workers = false;
 
     switch (type) {
         case PAUSE_ALL_THREADS:
+            printf("thread.c :: pause_threads - PAUSE_ALL_THREADS\n");
             slab_maintenance_pause(settings.slab_rebal);
             lru_maintainer_pause();
             lru_crawler_pause();
+            printf("thread.c :: pause_threads - PAUSE_ALL_THREADS2\n");
 #ifdef EXTSTORE
             storage_compact_pause();
             storage_write_pause();
@@ -184,15 +187,17 @@ void pause_threads(enum pause_thread_types type) {
             assert(1 == 0);
             break;
     }
-
+    printf("thread.c :: pause_threads2, pause_workers : %d\n",pause_workers);
     /* Only send a message if we have one. */
     if (!pause_workers) {
+        printf("thread.c :: pause_threads3\n");
         return;
     }
 
     pthread_mutex_lock(&init_lock);
     init_count = 0;
     for (i = 0; i < settings.num_threads; i++) {
+        printf("thread.c :: pause_threads4\n");
         notify_worker_fd(&threads[i], 0, queue_pause);
     }
     wait_for_thread_registration(settings.num_threads);
@@ -315,6 +320,7 @@ static CQ_ITEM *cqi_new(CQ *cq) {
     printf("memcached/thread.c :: cqi_new()\n");
 #endif
     CQ_ITEM *item = cache_alloc(cq->cache);
+
     if (item == NULL) {
         STATS_LOCK();
         stats.malloc_fails++;
@@ -339,6 +345,9 @@ static void cqi_free(CQ *cq, CQ_ITEM *item) {
 static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
 #if ENABLE_PRINT
     printf("memcached/thread.c :: notify_worker()\n");
+    if(item != NULL){
+       printf("memcached/thread.c :: notify_worker(), item is not null\n");
+    }
 #endif
     cq_push(t->ev_queue, item);
 #ifdef HAVE_EVENTFD
@@ -399,6 +408,9 @@ static void create_worker(void *(*func)(void *), void *arg) {
         exit(1);
     }
     thread_setname(((LIBEVENT_THREAD*)arg)->thread_id, "mc-worker");
+#if ENABLE_PRINT
+    printf("memcached/thread.c :: create_worker()3\n");
+#endif
 }
 
 /*
@@ -439,20 +451,25 @@ static void setup_thread(LIBEVENT_THREAD *me) {
 #endif
 
 #if defined(LIBEVENT_VERSION_NUMBER) && LIBEVENT_VERSION_NUMBER >= 0x02000101
+    //여기 실행
+    //이벤트 루프(event base)를 초기화하는 코드
+//#if ENABLE_SOCKET_FUNCTIONS
     struct event_config *ev_config;
     ev_config = event_config_new();
     event_config_set_flag(ev_config, EVENT_BASE_FLAG_NOLOCK);
     me->base = event_base_new_with_config(ev_config);
     event_config_free(ev_config);
+//#endif
 #else
     me->base = event_init();
 #endif
 
+#if ENABLE_SOCKET_FUNCTIONS
     if (! me->base) {
         fprintf(stderr, "Can't allocate event base\n");
         exit(1);
     }
-
+#endif
     /* Listen for notifications from other threads */
 #if ENABLE_SOCKET_FUNCTIONS
     setup_thread_notify(me, &me->n, thread_libevent_process);
@@ -550,8 +567,9 @@ static void setup_thread(LIBEVENT_THREAD *me) {
  * Worker thread: main event loop
  */
 static void *worker_libevent(void *arg) {
+#if ENABLE_SOCKET_FUNCTIONS
     LIBEVENT_THREAD *me = arg;
-
+    printf("memcached::thread.c worker_libevent()\n");
     /* Any per-thread setup can happen here; memcached_thread_init() will block until
      * all threads have finished initializing.
      */
@@ -567,6 +585,7 @@ static void *worker_libevent(void *arg) {
 
     register_thread_initialized();
     while (!event_base_got_exit(me->base)) {
+        printf("is not event_base_got_exit()\n");
         event_base_loop(me->base, EVLOOP_ONCE);
         // Run IO queues after the event loop to catch things like
         // re-submissions from proxy callbacks.
@@ -581,6 +600,8 @@ static void *worker_libevent(void *arg) {
     register_thread_initialized();
 
     event_base_free(me->base);
+#endif
+    register_thread_initialized();
     return NULL;
 }
 
@@ -991,12 +1012,20 @@ item *item_touch(const char *key, size_t nkey, uint32_t exptime, LIBEVENT_THREAD
  * needed.
  */
 void item_remove(item *item) {
+#if ENABLE_PRINT
+    printf("memcached/thread.c::item_remove\n");
+#endif
     uint32_t hv;
     hv = hash(ITEM_key(item), item->nkey);
-
+#if ENABLE_PRINT
+    printf("memcached/thread.c::item_remove2\n");
+#endif
     item_lock(hv);
     do_item_remove(item);
     item_unlock(hv);
+#if ENABLE_PRINT
+    printf("memcached/thread.c::item_remove3\n");
+#endif
 }
 
 /*
@@ -1165,10 +1194,12 @@ static void memcached_thread_notify_init(struct thread_notify *tn) {
  */
 void memcached_thread_init(int nthreads, void *arg) {
 #if ENABLE_PRINT
-    printf("memcached/thread.c :: memcached_thread_init()\n");
+    printf("memcached/thread.c :: memcached_thread_init(), POWER_LARGEST : %d\n", POWER_LARGEST);
 #endif
     int         i;
     int         power;
+
+    //POWER_LARGEST : 256
 
     for (i = 0; i < POWER_LARGEST; i++) {
         pthread_mutex_init(&lru_locks[i], NULL);
@@ -1179,7 +1210,7 @@ void memcached_thread_init(int nthreads, void *arg) {
     pthread_cond_init(&init_cond, NULL);
 
     /* Want a wide lock table, but don't waste memory */
-    if (nthreads < 3) {
+    if (nthreads < 3) { // nthreads : 1
         power = 10;
     } else if (nthreads < 4) {
         power = 11;
@@ -1204,6 +1235,9 @@ void memcached_thread_init(int nthreads, void *arg) {
     item_lock_count = hashsize(power);
     item_lock_hashpower = power;
 
+    // item_lock_count : 1024
+    // item_lock_hashpower : 10
+
     item_locks = calloc(item_lock_count, sizeof(pthread_mutex_t));
     if (! item_locks) {
         perror("Can't allocate item locks");
@@ -1214,6 +1248,7 @@ void memcached_thread_init(int nthreads, void *arg) {
     }
 
     threads = calloc(nthreads, sizeof(LIBEVENT_THREAD));
+    //threads : 1개
     if (! threads) {
         perror("Can't allocate thread descriptors");
         exit(1);
@@ -1231,20 +1266,28 @@ void memcached_thread_init(int nthreads, void *arg) {
         /* Reserve three fds for the libevent base, and two for the pipe */
         stats_state.reserved_fds += 5;
     }
-
+ 
     /* Create threads after we've done all the libevent setup. */
     for (i = 0; i < nthreads; i++) {
-        //printf("memcached/thread.c :: memcached_thread_init() 1, threads[%d]->open_bundle : %d\n", i, threads[i].open_bundle);
         create_worker(worker_libevent, &threads[i]);
 #if ENABLE_PRINT
-        printf("memcached/thread.c :: memcached_thread_init(), threads[%d] id : %d\n", i, threads[i].thread_id);
+        printf("memcached/thread.c :: memcached_thread_init(), threads[%d] id : %lu\n", i, threads[i].thread_id);
 #endif
     }
 
     /* Wait for all the threads to set themselves up before returning. */
     pthread_mutex_lock(&init_lock);
+#if ENABLE_PRINT
+    printf("memcached/thread.c :: memcached_thread_init() lock \n");
+#endif
     wait_for_thread_registration(nthreads);
+#if ENABLE_PRINT
+    printf("memcached/thread.c :: memcached_thread_init() unlock \n");
+#endif
     pthread_mutex_unlock(&init_lock);
+#if ENABLE_PRINT
+    printf("memcached/thread.c :: memcached_thread_init() return \n");
+#endif
 }
 
 
@@ -1259,7 +1302,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
                        int read_buffer_size, enum network_transport transport,
                        uint64_t conntag, enum protocol bproto) {
 #if ENABLE_PRINT
-    printf("memcached/thread.c :: mpi_dispatch_conn_new(), c->item : %p\n", c->item);
+    printf("memcached/thread.c :: mpi_dispatch_conn_new(), c->item : %p, c->resp_head : %d\n", c->item, c->resp_head);
 #endif
     CQ_ITEM *item = NULL;
     LIBEVENT_THREAD *thread;
@@ -1271,7 +1314,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
 
     item = cqi_new(thread->ev_queue);
 #if ENABLE_PRINT
-    printf("\t mpi_dispatch_conn_new - item : %p\n", item);
+    printf("\t mpi_dispatch_conn_new - item : %p, c->resp_head : %d\n", item, c->resp_head);
 #endif
     if (item == NULL) {
         //close(sfd);
@@ -1281,7 +1324,7 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
         return;
     }
 #if ENABLE_PRINT
-        printf("memcached/thread.c :: mpi_dispatch_conn_new() 2\n");
+        printf("memcached/thread.c :: mpi_dispatch_conn_new() 2, c->resp_head : %d, item : %p\n", c->resp_head, item);
 #endif
     item->sfd = c->rank;
     item->init_state = init_state;
@@ -1299,11 +1342,9 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
     //printf("memcached/thread.c :: mpi_dispatch_conn_new() - &threads[%d] : %p\n", c->rank-1, &threads[c->rank-1]);
     notify_worker(thread, item);
 
-
-
 #if ENABLE_PRINT
-        printf("memcached/thread.c :: mpi_dispatch_conn_new()3\n");
-        printf("\t thread id : %d\n", thread->thread_id);
+        printf("memcached/thread.c :: mpi_dispatch_conn_new()4\n");
+        //printf("\t thread id : %d\n", thread->thread_id);
 #endif
 }
 

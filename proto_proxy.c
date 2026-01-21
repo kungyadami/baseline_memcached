@@ -903,7 +903,7 @@ int proxy_run_rcontext(mcp_rcontext_t *rctx) {
             case MCP_YIELD_INTERNAL:
                 // stack should be: rq, res
                 if (rctx->parent) {
-                    LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, "cannot run mcp.internal from a sub request");
+                    //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, "cannot run mcp.internal from a sub request");
                     rctx->pending_reqs--;
                     return LUA_ERRRUN;
                 } else {
@@ -939,7 +939,7 @@ int proxy_run_rcontext(mcp_rcontext_t *rctx) {
         // Log the error where it happens, then the parent will handle a
         // result object normally.
         P_DEBUG("%s: Failed to run coroutine: %s\n", __func__, lua_tostring(Lc, -1));
-        LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(Lc, -1));
+        //LOGGER_LOG(NULL, LOG_PROXYEVENTS, LOGGER_PROXY_ERROR, NULL, lua_tostring(Lc, -1));
         if (!rctx->parent) {
             proxy_out_errstring(resp, PROXY_SERVER_ERROR, "lua failure");
             conn_resp_unsuspend(rctx->c, resp);

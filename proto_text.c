@@ -1767,8 +1767,8 @@ static void process_mset_command(conn *c, token_t *tokens, const size_t ntokens)
             pthread_mutex_unlock(&c->thread->stats.mutex);
         }
         // FIXME: LOGGER_LOG specific to mset, include options.
-        LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
-                NULL, status, comm, key, nkey, 0, 0);
+        // LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
+        //         NULL, status, comm, key, nkey, 0, 0);
 
         /* Avoid stale data persisting in cache because we failed alloc. */
         // NOTE: only if SET mode?
@@ -1939,7 +1939,7 @@ static void process_mdelete_command(conn *c, token_t *tokens, const size_t ntoke
             c->thread->stats.slab_stats[ITEM_clsid(it)].delete_hits++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
 
-            LOGGER_LOG(NULL, LOG_DELETIONS, LOGGER_DELETIONS, it, LOG_TYPE_META_DELETE);
+            //LOGGER_LOG(NULL, LOG_DELETIONS, LOGGER_DELETIONS, it, LOG_TYPE_META_DELETE);
             if (!of.remove_val) {
                 do_item_unlink(it, hv);
                 STORAGE_delete(c->thread->storage, it);
@@ -2291,8 +2291,8 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
             c->thread->stats.store_no_memory++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
         }
-        LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
-                NULL, status, comm, key, nkey, 0, 0, c->sfd);
+        // LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE,
+        //         NULL, status, comm, key, nkey, 0, 0, c->sfd);
         /* swallow the data line */
         conn_set_state(c, conn_swallow);
         c->sbytes = vlen;
@@ -2478,7 +2478,7 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.slab_stats[ITEM_clsid(it)].delete_hits++;
         pthread_mutex_unlock(&c->thread->stats.mutex);
-        LOGGER_LOG(NULL, LOG_DELETIONS, LOGGER_DELETIONS, it, LOG_TYPE_DELETE);
+        //LOGGER_LOG(NULL, LOG_DELETIONS, LOGGER_DELETIONS, it, LOG_TYPE_DELETE);
         do_item_unlink(it, hv);
         STORAGE_delete(c->thread->storage, it);
         do_item_remove(it);      /* release our reference */
@@ -3808,9 +3808,6 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
     int comm;
 
     MEMCACHED_PROCESS_COMMAND_START(c->rank, c->rcurr, c->rbytes);
-#if ENABLE_FPRINT
-    fprintf(stderr, "<%d %s\n", c->rank, command);
-#endif
 
     assert(c != NULL);
 #if MPI_DEBUG
@@ -3864,7 +3861,14 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
             WANT_TOKENS_OR(ntokens, 6, 7);
             mpi_process_update_command(c, tokens, ntokens, comm, false);
         }
-    } 
+    }
+    //else if (first == 'e'){
+    //     printf("memcached mpi_process_command_ascii first token is e\n");
+    //     if (strcmp(tokens[COMMAND_TOKEN].value, "end") == 0) {
+    //         c->state = conn_closing;
+    //         return;
+    //     }
+    // }
 
     return;
 }
@@ -4034,15 +4038,9 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
             while (*ptr == ' ') { /* ignore leading whitespaces */
                 //여기는 안 들어감
                 ++ptr;
-
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 2\n");
-#endif
             }
 
-            if (ptr - c->rcurr > 100 ||
-                (strncmp(ptr, "get ", 4) && strncmp(ptr, "gets ", 5))) {
-
+            if (ptr - c->rcurr > 100 || (strncmp(ptr, "get ", 4) && strncmp(ptr, "gets ", 5))) {
                 c->state = conn_closing;
                 return 1;
             }
@@ -4078,13 +4076,7 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
 
     c->rbytes -= (cont - c->rcurr);
     c->rcurr = cont;
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() 3, c->rbytes : %d\n", c->rbytes);
-#endif
     assert(c->rcurr <= (c->rbuf + c->rsize));
-#if MPI_DEBUG
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii() next, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
-#endif
     return 1;
 }
 #endif

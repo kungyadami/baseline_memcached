@@ -1438,14 +1438,14 @@ static int mcplib_attach(lua_State *L) {
 static int mcplib_ct_log(lua_State *L) {
     const char *msg = luaL_checkstring(L, -1);
     // The only difference is we pull the logger from thread local storage.
-    LOGGER_LOG(NULL, LOG_PROXYUSER, LOGGER_PROXY_USER, NULL, msg);
+    //LOGGER_LOG(NULL, LOG_PROXYUSER, LOGGER_PROXY_USER, NULL, msg);
     return 0;
 }
 
 static int mcplib_log(lua_State *L) {
     LIBEVENT_THREAD *t = PROXY_GET_THR(L);
     const char *msg = luaL_checkstring(L, -1);
-    LOGGER_LOG(t->l, LOG_PROXYUSER, LOGGER_PROXY_USER, NULL, msg);
+    //LOGGER_LOG(t->l, LOG_PROXYUSER, LOGGER_PROXY_USER, NULL, msg);
     return 0;
 }
 

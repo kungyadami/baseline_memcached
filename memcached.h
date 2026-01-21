@@ -55,6 +55,7 @@
 #include "util.h"
 
 #include <mpi.h>
+#include <time.h>
 
 
 
@@ -63,6 +64,15 @@
 #define ENABLE_PRINT 0
 #define ENABLE_FPRINT 0
 #define MPI_DEBUG 0
+#define BREAKDOWN 0
+#define HASH_BREAKDOWN 1
+#define MPI_BREAKDOWN 0
+#define MEMCACHED_MODE 1
+#define PS_MODE 0
+#define BILLION 1000000000UL
+#define REQ_NUM 1250000
+#define END_TAG 400
+
 #ifdef EXTSTORE
 #include "crc32c.h"
 #endif
@@ -929,6 +939,9 @@ struct conn {
 
 
 #if ENABLE_MPI_FUNCTIONS
+
+#define SEND_TAG 200
+#define RECV_TAG 100
 
 struct mpi_conn_info{
     int  rank;      /** MPI Rank */

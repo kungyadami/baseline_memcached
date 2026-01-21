@@ -22,6 +22,12 @@ static void item_unlink_q(item *it);
 
 static unsigned int lru_type_map[4] = {HOT_LRU, WARM_LRU, COLD_LRU, TEMP_LRU};
 
+
+#if HASH_BREAKDOWN
+    extern unsigned long hash_time[4];
+    extern volatile int temp_rank;
+#endif
+
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
     uint64_t evicted;
@@ -200,7 +206,8 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // We send '0' in for "total_bytes" as this routine is always
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
-            if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
+            //printf("memcached/item.c :: do_item_alloc_pull()2\n");
+            if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) { //여기 들어감
                 if (settings.lru_segmented) {
                     lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
                 } else {
@@ -232,7 +239,7 @@ item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain) {
     if (size > settings.slab_chunk_size_max)
         size = settings.slab_chunk_size_max;
     unsigned int id = slabs_clsid(size);
-
+    //printf("memcached/items.c :: do_item_alloc_chunk\n");
     item_chunk *nch = (item_chunk *) do_item_alloc_pull(size, id);
     if (nch == NULL) {
         // The final chunk in a large item will attempt to be a more
@@ -245,6 +252,7 @@ item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain) {
         } else {
             size = settings.slab_chunk_size_max;
             id = slabs_clsid(size);
+            //printf("memcached/items.c :: do_item_alloc_chunk2\n");
             nch = (item_chunk *) do_item_alloc_pull(size, id);
 
             if (nch == NULL)
@@ -300,11 +308,9 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     /* This is a large item. Allocate a header object now, lazily allocate
      *  chunks while reading the upload.
      */
+    //printf("memcached::item.c :: do_item_alloc() ntotal : %d | settings.slab_chunk_size_max : %d | id : %d\n", ntotal, settings.slab_chunk_size_max, id);
     if (ntotal > settings.slab_chunk_size_max) {
         //안 들어감
-#if ENABLE_PRINT
-        printf("memcached/item.c :: do_item_alloc() - [3]\n");
-#endif
         /* We still link this item into the LRU for the larger slab class, but
          * we're pulling a header from an entirely different slab class. The
          * free routines handle large items specifically.
@@ -326,10 +332,6 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         if (it != NULL)
             it->it_flags |= ITEM_CHUNKED;
     } else {
-#if ENABLE_PRINT
-        printf("memcached/item.c :: do_item_alloc() - [4]\n");
-        printf("\t ntotal : %d | id : %d\n", ntotal, id);
-#endif
         it = do_item_alloc_pull(ntotal, id);
     }
 
@@ -388,16 +390,24 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
 }
 
 void item_free(item *it) {
+#if ENABLE_PRINT
+    printf("memcached/item.c::item_free()\n");
+#endif
     unsigned int clsid;
     assert((it->it_flags & ITEM_LINKED) == 0);
     assert(it != heads[it->slabs_clsid]);
     assert(it != tails[it->slabs_clsid]);
     assert(it->refcount == 0);
-
+#if ENABLE_PRINT
+    printf("memcached/item.c::item_free()1\n");
+#endif
     /* so slab size changer can tell later if item is already free or not */
     clsid = ITEM_clsid(it);
     DEBUG_REFCNT(it, 'F');
     slabs_free(it, clsid);
+#if ENABLE_PRINT
+    printf("memcached/item.c::item_free()2\n");
+#endif
 }
 
 /**
@@ -541,6 +551,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
     STATS_LOCK();
     stats_state.curr_bytes += ITEM_ntotal(it);
     stats_state.curr_items += 1;
+    //printf("do_item_link stats_state.curr_items : %d\n", stats_state.curr_items);
     stats.total_items += 1;
     STATS_UNLOCK();
 
@@ -588,6 +599,7 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
         stats_state.curr_items -= 1;
         STATS_UNLOCK();
         item_stats_sizes_remove(it);
+        printf("memcached::items.c :: do_item_unlink_nolock()\n");
         assoc_delete(ITEM_key(it), it->nkey, hv);
         do_item_unlink_q(it);
         do_item_remove(it);
@@ -595,13 +607,25 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
 }
 
 void do_item_remove(item *it) {
+#if ENABLE_PRINT
+    printf("memcached/items.c :: do_item_remove()1\n");
+#endif
     MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
     assert(it->refcount > 0);
+#if ENABLE_PRINT
+    printf("memcached/items.c :: do_item_remove()2, it->refcount : %d\n", it->refcount);
+#endif
 
     if (refcount_decr(it) == 0) {
+        #if ENABLE_PRINT
+            printf("memcached/items.c :: do_item_remove()2-1\n");
+        #endif
         item_free(it);
     }
+#if ENABLE_PRINT
+    printf("memcached/items.c :: do_item_remove()3\n");
+#endif
 }
 
 /* Bump the last accessed time, or relink if we're in compat mode */
@@ -691,6 +715,7 @@ void item_flush_expired(void) {
                 if ((iter->it_flags & ITEM_SLABBED) == 0) {
                     STORAGE_delete(ext_storage, iter);
                     // nolock version because we hold the LRU lock already.
+                    printf("memcached::item.c :: item_flush_expired() \n");
                     do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey));
                 }
                 item_trylock_unlock(hold_lock);
@@ -1047,10 +1072,15 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
-#if ENABLE_PRINT
-    printf("[yedam] items.c :: do_item_get()\n");
-#endif
+    struct timespec hash_op_start, hash_op_end;
+    #if HASH_BREAKDOWN
+        clock_gettime(CLOCK_REALTIME, &hash_op_start);
+    #endif
     item *it = assoc_find(key, nkey, hv);
+    #if HASH_BREAKDOWN
+        clock_gettime(CLOCK_REALTIME, &hash_op_end);
+        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
+    #endif
     if (it != NULL) {
         refcount_incr(it);
     }
@@ -1232,6 +1262,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 search->refcount = 1;
                 /* This will call item_remove -> item_free since refcnt is 1 */
                 STORAGE_delete(ext_storage, search);
+                printf("memcached::item.c :: lru_pull_tail() \n");
                 do_item_unlink_nolock(search, hv);
                 item_trylock_unlock(hold_lock);
                 continue;
@@ -1246,6 +1277,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 itemstats[id].expired_unfetched++;
             }
             /* refcnt 2 -> 1 */
+            printf("memcached::item.c :: lru_pull_tail()2\n");
             do_item_unlink_nolock(search, hv);
             STORAGE_delete(ext_storage, search);
             /* refcnt 1 -> 0 -> item_free */
@@ -1313,8 +1345,9 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     if ((search->it_flags & ITEM_ACTIVE)) {
                         itemstats[id].evicted_active++;
                     }
-                    LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
+                    //LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
+                    printf("memcached::item.c :: lru_pull_tail()3\n");
                     do_item_unlink_nolock(search, hv);
                     removed++;
                     if (settings.slab_automove == 2) {
@@ -1615,16 +1648,16 @@ static void lru_maintainer_crawler_check(struct crawler_expired_data *cdata, log
                     lru_name = "temp";
                     break;
             }
-            LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_CRAWLER_STATUS, NULL,
-                    CLEAR_LRU(i),
-                    lru_name,
-                    (unsigned long long)low_watermark,
-                    (unsigned long long)available_reclaims,
-                    (unsigned int)since_run,
-                    next_crawls[i] - current_time,
-                    s->end_time - s->start_time,
-                    s->seen,
-                    s->reclaimed);
+            // LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_CRAWLER_STATUS, NULL,
+            //         CLEAR_LRU(i),
+            //         lru_name,
+            //         (unsigned long long)low_watermark,
+            //         (unsigned long long)available_reclaims,
+            //         (unsigned int)since_run,
+            //         next_crawls[i] - current_time,
+            //         s->end_time - s->start_time,
+            //         s->seen,
+            //         s->reclaimed);
             // Got our calculation, avoid running until next actual run.
             s->run_complete = false;
             pthread_mutex_unlock(&cdata->lock);
