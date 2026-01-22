@@ -71,7 +71,6 @@
 #define MEMCACHED_MODE 1
 #define PS_MODE 0
 #define BILLION 1000000000UL
-#define REQ_NUM 1250000
 #define END_TAG 400
 
 #ifdef EXTSTORE

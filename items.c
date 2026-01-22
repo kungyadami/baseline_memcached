@@ -193,6 +193,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
     for (i = 0; i < 10; i++) {
         /* Try to reclaim memory first */
         if (!settings.lru_segmented) {
+            printf("lru_pull_tail 호출4\n");
             lru_pull_tail(id, COLD_LRU, 0, 0, 0, NULL);
         }
         it = slabs_alloc(id, 0);
@@ -202,8 +203,10 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             //printf("memcached/item.c :: do_item_alloc_pull()2\n");
+            printf("lru_pull_tail 호출5\n");
             if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) { //여기 들어감
                 if (settings.lru_segmented) {
+                    printf("lru_pull_tail 호출6\n");
                     lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
                 } else {
                     break;
@@ -1501,7 +1504,7 @@ static uint64_t lru_total_bumps_dropped(void) {
  * autoadjust in the future.
  */
 static int lru_maintainer_juggle(const int slabs_clsid) {
-    //printf("memcached/item.c :: lru_maintainer_juggle()\n");
+    printf("memcached/item.c :: lru_maintainer_juggle()\n");
     int i;
     int did_moves = 0;
     uint64_t total_bytes = 0;
@@ -1513,6 +1516,7 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
     if (settings.temp_lru) {
         /* Only looking for reclaims. Run before we size the LRU. */
         for (i = 0; i < 500; i++) {
+            printf("lru_pull_tail 호출\n");
             if (lru_pull_tail(slabs_clsid, TEMP_LRU, 0, 0, 0, NULL) <= 0) {
                 break;
             } else {
@@ -1547,7 +1551,7 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
         pthread_mutex_unlock(&lru_locks[slabs_clsid|WARM_LRU]);
     }
 
-    /* Juggle HOT/WARM up to N times */
+    /* Juggle HOT/WARM up to N times */ //여기를 계속 들어감!!
     for (i = 0; i < 500; i++) {
         int do_more = 0;
         if (lru_pull_tail(slabs_clsid, HOT_LRU, total_bytes, LRU_PULL_CRAWL_BLOCKS, hot_age, NULL) ||
@@ -1681,14 +1685,14 @@ static void *lru_maintainer_thread(void *arg) {
 #if ENABLE_PRINT
     printf("memcached/item.c :: lru_maintainer_thread()\n");
 #endif
+    printf("lru_maintainer_thread(), POWER_SMALLEST : %d | MAX_NUMBER_OF_SLAB_CLASSES : %d\n", POWER_SMALLEST, MAX_NUMBER_OF_SLAB_CLASSES);
     int i;
     useconds_t to_sleep = MIN_LRU_MAINTAINER_SLEEP;
     useconds_t last_sleep = MIN_LRU_MAINTAINER_SLEEP;
     rel_time_t last_crawler_check = 0;
     useconds_t next_juggles[MAX_NUMBER_OF_SLAB_CLASSES] = {0};
     useconds_t backoff_juggles[MAX_NUMBER_OF_SLAB_CLASSES] = {0};
-    struct crawler_expired_data *cdata =
-        calloc(1, sizeof(struct crawler_expired_data));
+    struct crawler_expired_data *cdata = calloc(1, sizeof(struct crawler_expired_data));
     if (cdata == NULL) {
         fprintf(stderr, "Failed to allocate crawler data for LRU maintainer thread\n");
         abort();
@@ -1715,9 +1719,11 @@ static void *lru_maintainer_thread(void *arg) {
 
         STATS_LOCK();
         stats.lru_maintainer_juggles++;
+        printf("item.c::lru_maintainer_thread, while statement, lru_maintainer_juggles : %d\n", stats.lru_maintainer_juggles);
         STATS_UNLOCK();
 
         /* Each slab class gets its own sleep to avoid hammering locks */
+        // for문은 1부터 64까지 반복
         for (i = POWER_SMALLEST; i < MAX_NUMBER_OF_SLAB_CLASSES; i++) {
             next_juggles[i] = next_juggles[i] > last_sleep ? next_juggles[i] - last_sleep : 0;
 
@@ -1787,6 +1793,7 @@ int start_lru_maintainer_thread(void *arg) {
     pthread_mutex_lock(&lru_maintainer_lock);
     do_run_lru_maintainer_thread = 1;
     settings.lru_maintainer_thread = true;
+    printf("start_lru_maintainer_thread, pthread create \n");
     if ((ret = pthread_create(&lru_maintainer_tid, NULL,
         lru_maintainer_thread, arg)) != 0) {
         fprintf(stderr, "Can't create LRU maintainer thread: %s\n",

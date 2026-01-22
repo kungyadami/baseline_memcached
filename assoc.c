@@ -65,13 +65,19 @@ void assoc_init(const int hashtable_init) {
     //memcached::초기값
     // hashtable_init : 0
     // hashpower : 16
-    // primary hashtable 할당한 양 : 65536??
+    // primary hashtable 할당한 양 : 65536 * sizeof(void*)
+    // hash_power_level : 16
+    // hash_bytes : primary hashtable이랑 동일한 양
 #if ENABLE_PRINT
     printf("memcached::assoc.c :: assoc_init()\n");
 #endif
+    //printf("memcached::assoc.c :: assoc_init(), hashtable_init : %d | hashpower : %d\n", hashtable_init, hashpower);
+
+
     if (hashtable_init) { // memcached::hash table이 0이라서 들어가지 않는다
         hashpower = hashtable_init;
     }
+    //printf("memcached::assoc.c :: assoc_init(), hashsize(hashpower) : %d\n", hashsize(hashpower));
     primary_hashtable = calloc(hashsize(hashpower), sizeof(void *));
     //memcached::메인 해시 테이블을 할당하는 것 같다
     // calloc은 1번째 인자 * 두번째 인자 만큼의 byte를 할당하고, 할당된 메모리를 모두 0으로 초기화해줌
@@ -96,8 +102,11 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //key : 넣은 key 값 ( ex : key_0, key_1, ..)
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : 해시 버킷
-    //printf("assoc_find\n");
+    //printf("assoc_find :: key : %s | hv : %u\n", key, hv);
     struct timespec hash_op_start, hash_op_end;
+#if HASH_BREAKDOWN
+    clock_gettime(CLOCK_REALTIME, &hash_op_start);
+#endif
     item *it;
     uint64_t oldbucket;
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
@@ -110,9 +119,6 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 #ifdef ENABLE_DTRACE
     int depth = 0;
 #endif
-#if HASH_BREAKDOWN
-    clock_gettime(CLOCK_REALTIME, &hash_op_start);
-#endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
@@ -123,13 +129,12 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
         ++depth;
 #endif
     }
-#if HASH_BREAKDOWN
-    clock_gettime(CLOCK_REALTIME, &hash_op_end);
-    hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
-#endif
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
     //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
-
+    #if HASH_BREAKDOWN
+        clock_gettime(CLOCK_REALTIME, &hash_op_end);
+        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
+    #endif
     return ret;
 }
 

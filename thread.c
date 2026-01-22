@@ -572,6 +572,7 @@ static void setup_thread(LIBEVENT_THREAD *me) {
  * Worker thread: main event loop
  */
 static void *worker_libevent(void *arg) {
+    printf("worker_libevent\n");
 #if ENABLE_SOCKET_FUNCTIONS
     LIBEVENT_THREAD *me = arg;
     printf("memcached::thread.c worker_libevent()\n");
@@ -1276,9 +1277,6 @@ void memcached_thread_init(int nthreads, void *arg) {
     /* Create threads after we've done all the libevent setup. */
     for (i = 0; i < nthreads; i++) {
         create_worker(worker_libevent, &threads[i]);
-#if ENABLE_PRINT
-        printf("memcached/thread.c :: memcached_thread_init(), threads[%d] id : %lu\n", i, threads[i].thread_id);
-#endif
     }
 
     /* Wait for all the threads to set themselves up before returning. */

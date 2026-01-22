@@ -171,8 +171,10 @@ static void slab_rebalance_prep(struct slab_rebal_thread *t) {
         // global is empty and memory limit is reached. we have to evict
         // memory to move forward.
         for (int x = 0; x < 10; x++) {
+            printf("lru_pull_tail 호출8\n");
             if (lru_pull_tail(s_clsid, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) {
                 if (settings.lru_segmented) {
+                    printf("lru_pull_tail 호출9\n");
                     lru_pull_tail(s_clsid, HOT_LRU, 0, 0, 0, NULL);
                 }
             }

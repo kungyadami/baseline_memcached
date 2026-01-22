@@ -53,6 +53,8 @@ volatile int resp_num;
 int completed_clients;
 int mpi_client_size;
 unsigned long hash_time[16];
+unsigned long all_time;
+struct timespec all_start, all_end;
 volatile int temp_rank=0;
 unsigned long MPI_recv_time, MPI_send_time;
 int old_hash_table_num=0;
@@ -5554,56 +5556,35 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
     }
 
     while(1){
-
-        /*
-        MPI_Status status;
-
-        // 1. 먼저 메시지 확인
-        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG,
-                MPI_COMM_WORLD, &status);
-
-        // 2. 실제 크기 확인
-        int count;
-        MPI_Get_count(&status, MPI_CHAR, &count);
-
-        // 3. 정확한 source/tag로 recv
-        MPI_Recv(c->rbuf, count, MPI_CHAR,
-                status.MPI_SOURCE,
-                status.MPI_TAG,
-                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
-        */
-
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
-        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        int count;
-        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &count);
         #if MPI_RECV_BREAKDOWN
             clock_gettime(CLOCK_REALTIME, &recv_start);
         #endif
+        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
+        int count;
+        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &count);
         int err = MPI_Recv(c->rbuf, count, MPI_CHAR,
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
         #if MPI_RECV_BREAKDOWN
             clock_gettime(CLOCK_REALTIME, &recv_end);
             MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
         #endif
+
         c->rank = mpi_recv_status.MPI_SOURCE;
         if(mpi_recv_status.MPI_TAG == END_TAG){
             completed_clients++;
             if(completed_clients == mpi_client_size){
+                // clock_gettime(CLOCK_REALTIME, &all_end);
+                // all_time+=((all_end.tv_sec-all_start.tv_sec)*BILLION)+all_end.tv_nsec-all_start.tv_nsec;
                 return READ_ERROR;
             }
         }
         
-        // printf("MPI_Recv()1 c->rank : %d\n", c->rank);
-        // int err = MPI_Recv(c->rbuf, avail, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        // printf("MPI_Recv()2 c->rank : %d\n", c->rank);
-        // c->rank = mpi_recv_status.MPI_SOURCE;
-        // printf("MPI_Recv()3 c->rank : %d\n", c->rank);
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
@@ -5852,7 +5833,6 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_start);
     #endif
-    //printf("MPI_Send() c->rank : %d\n", c->rank);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
     #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_end);
@@ -5875,13 +5855,6 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
                 clock_gettime(CLOCK_REALTIME, &end);
                 send_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
-            resp_num++;
-            // if(resp_num%10000 == 0){
-            //     printf("resp_num : %d\n", resp_num);
-            // }
-            // if(resp_num==REQ_NUM){
-            //     c->state = conn_closing;
-            // }
             return TRANSMIT_COMPLETE;
         }
     }
@@ -6386,9 +6359,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #endif
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
-                printf("old_table_num : %d\n", old_hash_table_num);
-                printf("primary_table_num : %d\n", primary_hash_table_num);
             #endif
+            printf("server elapsed_time : %lu sec\n", all_time);
 
             sleep(10);
             exit(0);
@@ -6647,6 +6619,8 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 
 int main (int argc, char **argv) {
+
+    //clock_gettime(CLOCK_REALTIME, &all_start);
     int c;
     bool lock_memory = false;
     bool do_daemonize = false;
@@ -7994,24 +7968,15 @@ int main (int argc, char **argv) {
     assoc_init(settings.hashpower_init);
 
 #ifdef EXTSTORE //둘다 0이라 안들어감
-    //printf("memcached/memcached.c :: main() - storage_enabled : %d | reuse_mem : %d\n", storage_enabled, reuse_mem);
     if (storage_enabled && reuse_mem) {
         fprintf(stderr, "[restart] memory restart with extstore not presently supported.\n");
         reuse_mem = false;
     }
 #endif
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[14]-1, slabs_init() call, mpi_conn_arr[0]->item : %d\n", mpi_conn_arr[0].item);
-#endif
     slabs_init(settings.maxbytes, settings.factor, preallocate,
             use_slab_sizes ? slab_sizes : NULL, mem_base, reuse_mem);
-    //printf("memcached/memcached.c :: main()-[14]-1, slabs_init() call end\n");
 #ifdef EXTSTORE
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[14]-1, EXTSTORE\n");
-#endif
     if (storage_enabled) { //storage_enabled가 0이라 안들어감
-        //printf("memcached/memcached.c :: main()-[14]-1, EXTSTORE 2\n");
         storage = storage_init(storage_cf);
         if (storage == NULL) {
             exit(EXIT_FAILURE);
@@ -8021,15 +7986,9 @@ int main (int argc, char **argv) {
         prefill = true;
     }
 #endif
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[14]-2\n");
-#endif
     if (settings.drop_privileges) { //여기도 안 들어감
         setup_privilege_violations_handler();
     }
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[15], prefill : %d\n", prefill);
-#endif
     if (prefill) //prefill도 0이라, 안들어감..
         slabs_prefill_global();
     /* In restartable mode and we've decided to issue a fixup on memory */
@@ -8060,9 +8019,8 @@ int main (int argc, char **argv) {
     }
 #endif
 #ifdef EXTSTORE
-#if ENABLE_PRINT
-    printf("memcached/memcached. memcached_thread_init is called in EXTSTORE Macro\n");
-#endif
+    printf("memcached_thread_init() 호출\n");
+
     memcached_thread_init(settings.num_threads, storage);
     init_lru_crawler(storage);
 #else
@@ -8076,9 +8034,6 @@ int main (int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
     }
-#endif
-#if ENABLE_PRINT
-     printf("memcached/memcached.c :: main()-[14]-4\n");
 #endif
     if (start_assoc_maint && start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
@@ -8096,7 +8051,6 @@ int main (int argc, char **argv) {
         fprintf(stderr, "Failed to start storage writer thread\n");
         exit(EXIT_FAILURE);
     }
-    //printf("memcached/memcached.c :: main()-[16]\n");
     if (start_lru_maintainer && start_lru_maintainer_thread(storage) != 0) {
 #else
     if (start_lru_maintainer && start_lru_maintainer_thread(NULL) != 0) {
@@ -8294,10 +8248,11 @@ int main (int argc, char **argv) {
     /* enter the event loop */
 
     pthread_t ttid = pthread_self(); 
-    sleep(50);
+    //sleep(50);
     // char ch;
     // printf("getchar : ");
     // ch=getchar();
+
 #if ENABLE_MPI_FUNCTIONS
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
         while(true){
