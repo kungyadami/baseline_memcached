@@ -5577,16 +5577,20 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
-        #if MPI_BREAKDOWN
-            clock_gettime(CLOCK_REALTIME, &recv_start);
-        #endif
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         int count;
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &count);
+        #if MPI_RECV_BREAKDOWN
+            clock_gettime(CLOCK_REALTIME, &recv_start);
+        #endif
         int err = MPI_Recv(c->rbuf, count, MPI_CHAR,
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        #if MPI_RECV_BREAKDOWN
+            clock_gettime(CLOCK_REALTIME, &recv_end);
+            MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
+        #endif
         c->rank = mpi_recv_status.MPI_SOURCE;
         if(mpi_recv_status.MPI_TAG == END_TAG){
             completed_clients++;
@@ -5600,10 +5604,6 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         // printf("MPI_Recv()2 c->rank : %d\n", c->rank);
         // c->rank = mpi_recv_status.MPI_SOURCE;
         // printf("MPI_Recv()3 c->rank : %d\n", c->rank);
-        #if MPI_BREAKDOWN
-            clock_gettime(CLOCK_REALTIME, &recv_end);
-            MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
-        #endif
         if (err != MPI_SUCCESS) {
             char err_str[MPI_MAX_ERROR_STRING];
             int len;
@@ -5849,12 +5849,12 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     }
 
     assert (c != NULL);
-    #if MPI_BREAKDOWN
+    #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_start);
     #endif
     //printf("MPI_Send() c->rank : %d\n", c->rank);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
-    #if MPI_BREAKDOWN
+    #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_end);
         MPI_send_time+=((send_end.tv_sec-send_start.tv_sec)*BILLION)+send_end.tv_nsec-send_start.tv_nsec;
     #endif
@@ -6378,11 +6378,12 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 printf("sum : %lu sec\n", send_brkdwn+recv_brkdwn+other_brkdwn);
 
             #endif
-            #if MPI_BREAKDOWN
+            #if MPI_RECV_BREAKDOWN
                 printf("[MPI_Recv breakdown] : %lu sec\n", MPI_recv_time);
+            #endif
+            #if MPI_SEND_BREAKDOWN
                 printf("[MPI_Send breakdown] : %lu sec\n", MPI_send_time);
             #endif
-
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
                 printf("old_table_num : %d\n", old_hash_table_num);
@@ -8293,6 +8294,7 @@ int main (int argc, char **argv) {
     /* enter the event loop */
 
     pthread_t ttid = pthread_self(); 
+    sleep(50);
     // char ch;
     // printf("getchar : ");
     // ch=getchar();

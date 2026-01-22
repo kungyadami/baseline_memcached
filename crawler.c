@@ -527,8 +527,8 @@ static void *item_crawler_thread(void *arg) {
     pthread_mutex_lock(&lru_crawler_lock);
     pthread_cond_signal(&lru_crawler_cond);
     settings.lru_crawler = true;
-    if (settings.verbose > 2)
-        fprintf(stderr, "Starting LRU crawler background thread\n");
+    // if (settings.verbose > 2)
+    //     fprintf(stderr, "Starting LRU crawler background thread\n");
     while (do_run_lru_crawler_thread) {
     pthread_cond_wait(&lru_crawler_cond, &lru_crawler_lock);
 
@@ -562,8 +562,8 @@ static void *item_crawler_thread(void *arg) {
             search = do_item_crawl_q((item *)&crawlers[i]);
             if (search == NULL ||
                 (crawlers[i].remaining && --crawlers[i].remaining < 1)) {
-                if (settings.verbose > 2)
-                    fprintf(stderr, "Nothing left to crawl for %d\n", i);
+                // if (settings.verbose > 2)
+                //     fprintf(stderr, "Nothing left to crawl for %d\n", i);
                 lru_crawler_class_done(i);
                 continue;
             }
@@ -627,16 +627,16 @@ static void *item_crawler_thread(void *arg) {
         active_crawler_mod.mod = NULL;
     }
 
-    if (settings.verbose > 2)
-        fprintf(stderr, "LRU crawler thread sleeping\n");
+    // if (settings.verbose > 2)
+    //     fprintf(stderr, "LRU crawler thread sleeping\n");
 
     STATS_LOCK();
     stats_state.lru_crawler_running = false;
     STATS_UNLOCK();
     }
     pthread_mutex_unlock(&lru_crawler_lock);
-    if (settings.verbose > 2)
-        fprintf(stderr, "LRU crawler thread stopping\n");
+    // if (settings.verbose > 2)
+    //     fprintf(stderr, "LRU crawler thread stopping\n");
     settings.lru_crawler = false;
 
     return NULL;
@@ -710,8 +710,8 @@ static int do_lru_crawler_start(uint32_t id, uint32_t remaining) {
 
     pthread_mutex_lock(&lru_locks[sid]);
     if (crawlers[sid].it_flags == 0) {
-        if (settings.verbose > 2)
-            fprintf(stderr, "Kicking LRU crawler off for LRU %u\n", sid);
+        // if (settings.verbose > 2)
+        //     fprintf(stderr, "Kicking LRU crawler off for LRU %u\n", sid);
         crawlers[sid].nbytes = 0;
         crawlers[sid].nkey = 0;
         crawlers[sid].it_flags = 1; /* For a crawler, this means enabled. */

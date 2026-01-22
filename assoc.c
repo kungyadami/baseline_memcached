@@ -98,9 +98,6 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //hv : 해시 버킷
     //printf("assoc_find\n");
     struct timespec hash_op_start, hash_op_end;
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_start);
-    #endif
     item *it;
     uint64_t oldbucket;
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
@@ -113,6 +110,9 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 #ifdef ENABLE_DTRACE
     int depth = 0;
 #endif
+#if HASH_BREAKDOWN
+    clock_gettime(CLOCK_REALTIME, &hash_op_start);
+#endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
@@ -123,12 +123,12 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
         ++depth;
 #endif
     }
+#if HASH_BREAKDOWN
+    clock_gettime(CLOCK_REALTIME, &hash_op_end);
+    hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
+#endif
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
     //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_end);
-        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
-    #endif
 
     return ret;
 }
@@ -162,13 +162,13 @@ static void assoc_expand(void) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_expand()\n");
 #endif
-    pthread_t tid = pthread_self();
+    //pthread_t tid = pthread_self();
     //printf("[%lu] assoc_expand\n",tid);
     old_hashtable = primary_hashtable;
 
     primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
     if (primary_hashtable) {
-        if (settings.verbose > 1)
+        //if (settings.verbose > 1)
             //fprintf(stderr, "Hash table expansion starting\n");
         hashpower++;
         expanding = true;
@@ -282,7 +282,7 @@ static void *assoc_maintenance_thread(void *arg) {
                     stats_state.hash_bytes -= hashsize(hashpower - 1) * sizeof(void *);
                     stats_state.hash_is_expanding = false;
                     STATS_UNLOCK();
-                    if (settings.verbose > 1){}
+                    //if (settings.verbose > 1){}
                         // fprintf(stderr, "Hash table expansion done\n");
                 }
 
