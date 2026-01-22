@@ -135,13 +135,15 @@ void item_unlock(uint32_t hv) {
 }
 
 static void wait_for_thread_registration(int nthreads) {
-    //printf("init count : %d | nthread : %d\n", init_count, nthreads);
-    // while (init_count < nthreads) {
-    //     pthread_cond_wait(&init_cond, &init_lock);
-    // }
+    pthread_t tid = pthread_self();
+    printf("[%lu] init count : %d | nthread : %d\n", tid, init_count, nthreads);
+    while (init_count < nthreads) {
+        pthread_cond_wait(&init_cond, &init_lock);
+    }
 }
 
 static void register_thread_initialized(void) {
+    printf("thread.c::register_thread_initializied\n");
     pthread_mutex_lock(&init_lock);
     init_count++;
     pthread_cond_signal(&init_cond);
@@ -160,7 +162,7 @@ void pause_threads(enum pause_thread_types type) {
 
     switch (type) {
         case PAUSE_ALL_THREADS:
-            //printf("[%lu] thread.c :: pause_threads - PAUSE_ALL_THREADS\n",tid);
+            printf("[%lu] thread.c :: pause_threads - PAUSE_ALL_THREADS\n",tid);
             slab_maintenance_pause(settings.slab_rebal);
             lru_maintainer_pause();
             lru_crawler_pause();
@@ -199,10 +201,10 @@ void pause_threads(enum pause_thread_types type) {
     pthread_mutex_lock(&init_lock);
     init_count = 0;
     for (i = 0; i < settings.num_threads; i++) {
-        //printf("[%lu] thread.c :: pause_threads4\n",tid);
+        printf("[%lu] thread.c :: pause_threads4\n",tid);
         notify_worker_fd(&threads[i], 0, queue_pause);
     }
-    //printf("[%lu] thread.c :: pause_threads5\n",tid);
+    printf("[%lu] thread.c :: pause_threads5\n",tid);
     wait_for_thread_registration(settings.num_threads);
     //printf("[%lu] thread.c :: pause_threads6\n",tid);
     pthread_mutex_unlock(&init_lock);
@@ -354,6 +356,7 @@ static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
        printf("memcached/thread.c :: notify_worker(), item is not null\n");
     }
 #endif
+    printf("memcached/thread.c :: notify_worker()\n");
     cq_push(t->ev_queue, item);
 #ifdef HAVE_EVENTFD
     uint64_t u = 1;
@@ -389,7 +392,8 @@ static void notify_worker_fd(LIBEVENT_THREAD *t, int sfd, enum conn_queue_item_m
         // area I want to keep more lean. If this CQ business becomes a more
         // generic queue I'll reconsider.
     }
-
+    pthread_t tid = pthread_self();
+    printf("[%lu] memcached/thread.c::notify_worker_fd()\n", tid);
     item->mode = mode;
     item->sfd = sfd;
     notify_worker(t, item);
@@ -662,6 +666,7 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
 #if ENABLE_PRINT
     printf("memcached/thread.c :: thread_libevent_process 1\n");
 #endif
+    printf("memcached/thread.c :: thread_libevent_process 1\n");
     CQ_ITEM *item;
     conn *c;
     uint64_t ev_count = 0; // max number of events to loop through this run.
@@ -732,6 +737,7 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
                 break;
             case queue_pause:
                 /* we were told to pause and report in */
+                printf("thread_libevent_process\n");
                 register_thread_initialized();
                 break;
             case queue_timeout:

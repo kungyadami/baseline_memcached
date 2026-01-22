@@ -1504,7 +1504,7 @@ static uint64_t lru_total_bumps_dropped(void) {
  * autoadjust in the future.
  */
 static int lru_maintainer_juggle(const int slabs_clsid) {
-    printf("memcached/item.c :: lru_maintainer_juggle()\n");
+    //printf("memcached/item.c :: lru_maintainer_juggle()\n");
     int i;
     int did_moves = 0;
     uint64_t total_bytes = 0;
@@ -1685,7 +1685,7 @@ static void *lru_maintainer_thread(void *arg) {
 #if ENABLE_PRINT
     printf("memcached/item.c :: lru_maintainer_thread()\n");
 #endif
-    printf("lru_maintainer_thread(), POWER_SMALLEST : %d | MAX_NUMBER_OF_SLAB_CLASSES : %d\n", POWER_SMALLEST, MAX_NUMBER_OF_SLAB_CLASSES);
+    //printf("lru_maintainer_thread(), POWER_SMALLEST : %d | MAX_NUMBER_OF_SLAB_CLASSES : %d\n", POWER_SMALLEST, MAX_NUMBER_OF_SLAB_CLASSES);
     int i;
     useconds_t to_sleep = MIN_LRU_MAINTAINER_SLEEP;
     useconds_t last_sleep = MIN_LRU_MAINTAINER_SLEEP;
@@ -1719,7 +1719,7 @@ static void *lru_maintainer_thread(void *arg) {
 
         STATS_LOCK();
         stats.lru_maintainer_juggles++;
-        printf("item.c::lru_maintainer_thread, while statement, lru_maintainer_juggles : %d\n", stats.lru_maintainer_juggles);
+        //printf("item.c::lru_maintainer_thread, while statement, lru_maintainer_juggles : %d\n", stats.lru_maintainer_juggles);
         STATS_UNLOCK();
 
         /* Each slab class gets its own sleep to avoid hammering locks */

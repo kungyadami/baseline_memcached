@@ -317,9 +317,9 @@ static void *assoc_maintenance_thread(void *arg) {
             pthread_t tid = pthread_self();
             //printf("[%lu] assoc_maintenance_thread1\n",tid);
             if (do_run_maintenance_thread) {
-                //printf("[%lu] assoc_maintenance_thread2\n",tid);
+                printf("[%lu] assoc_maintenance_thread2\n",tid);
                 pause_threads(PAUSE_ALL_THREADS);
-                //printf("[%lu] assoc_maintenance_thread3\n",tid);
+                printf("[%lu] assoc_maintenance_thread3\n",tid);
                 assoc_expand();
                 //printf("[%lu] assoc_maintenance_thread4\n",tid);
                 pause_threads(RESUME_ALL_THREADS);
