@@ -136,7 +136,7 @@ void item_unlock(uint32_t hv) {
 
 static void wait_for_thread_registration(int nthreads) {
     pthread_t tid = pthread_self();
-    printf("[%lu] init count : %d | nthread : %d\n", tid, init_count, nthreads);
+    printf("[%lu] thread.c::wait_for_thread_registration\n", tid);  
     while (init_count < nthreads) {
         pthread_cond_wait(&init_cond, &init_lock);
     }
@@ -315,6 +315,8 @@ static CQ_ITEM *cq_pop(CQ *cq) {
  * Adds an item to a connection queue.
  */
 static void cq_push(CQ *cq, CQ_ITEM *item) {
+    pthread_t tid = pthread_self();
+    printf("[%lu] thread.c :: cq_push()\n", tid);
     pthread_mutex_lock(&cq->lock);
     STAILQ_INSERT_TAIL(&cq->head, item, i_next);
     pthread_mutex_unlock(&cq->lock);
@@ -489,7 +491,7 @@ static void setup_thread(LIBEVENT_THREAD *me) {
     setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
 #if ENABLE_MPI_FUNCTIONS
-    printf("[%lu] thread.c setup_thread_notify, thread_libevent_process \n", tid);
+    printf("[%lu] thread.c setup_thread()\n", tid);
     setup_thread_notify(me, &me->n, thread_libevent_process);
     setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
@@ -617,6 +619,7 @@ static void *worker_libevent(void *arg) {
 
     event_base_free(me->base);
 #endif
+    printf("[%lu] thread.c::worker_libevent에서 register_thread_initialized 호출2\n", tid);
     register_thread_initialized();
     return NULL;
 }
@@ -669,9 +672,6 @@ static void thread_libevent_ionotify(evutil_socket_t fd, short which, void *arg)
  */
 static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) {
     LIBEVENT_THREAD *me = arg;
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: thread_libevent_process 1\n");
-#endif
     pthread_t tid = pthread_self();
     printf("[%lu] memcached/thread.c :: thread_libevent_process 1\n", tid);
     CQ_ITEM *item;

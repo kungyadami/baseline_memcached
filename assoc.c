@@ -252,10 +252,8 @@ static volatile int do_run_maintenance_thread = 1;
 int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
-#if ENABLE_PRINT
-        //여기서 스레드가 이 함수를 실행함
-        printf("memcached::assoc.c :: assoc_maintenance_thread()\n");
-#endif
+    pthread_t tid = pthread_self();
+    printf("[%lu] assoc.c :: assoc_maintenance_thread1\n", tid);
     mutex_lock(&maintenance_lock);
     while (do_run_maintenance_thread) {
         int ii = 0;
@@ -314,14 +312,10 @@ static void *assoc_maintenance_thread(void *arg) {
              * allow dynamic hash table expansion without causing significant
              * wait times.
              */
-            pthread_t tid = pthread_self();
-            //printf("[%lu] assoc_maintenance_thread1\n",tid);
             if (do_run_maintenance_thread) {
-                printf("[%lu] assoc_maintenance_thread2\n",tid);
+                printf("[%lu] assoc.c :: assoc_maintenance_thread2\n",tid);
                 pause_threads(PAUSE_ALL_THREADS);
-                printf("[%lu] assoc_maintenance_thread3\n",tid);
                 assoc_expand();
-                //printf("[%lu] assoc_maintenance_thread4\n",tid);
                 pause_threads(RESUME_ALL_THREADS);
             }
         }
