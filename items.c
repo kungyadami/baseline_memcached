@@ -1793,7 +1793,8 @@ int start_lru_maintainer_thread(void *arg) {
     pthread_mutex_lock(&lru_maintainer_lock);
     do_run_lru_maintainer_thread = 1;
     settings.lru_maintainer_thread = true;
-    printf("start_lru_maintainer_thread, pthread create \n");
+    pthread_t tid = pthread_self();
+    printf("[%lu] start_lru_maintainer_thread, pthread create lru maintainer tid function \n", tid);
     if ((ret = pthread_create(&lru_maintainer_tid, NULL,
         lru_maintainer_thread, arg)) != 0) {
         fprintf(stderr, "Can't create LRU maintainer thread: %s\n",

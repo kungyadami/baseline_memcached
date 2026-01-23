@@ -8019,7 +8019,8 @@ int main (int argc, char **argv) {
     }
 #endif
 #ifdef EXTSTORE
-    printf("memcached_thread_init() 호출\n");
+    pthread_t temp_tid = pthread_self();
+    printf("[%lu] memcached_thread_init() 호출\n", temp_tid);
 
     memcached_thread_init(settings.num_threads, storage);
     init_lru_crawler(storage);

@@ -143,7 +143,8 @@ static void wait_for_thread_registration(int nthreads) {
 }
 
 static void register_thread_initialized(void) {
-    printf("thread.c::register_thread_initializied\n");
+    pthread_t tid = pthread_self();
+    printf("[%lu] thread.c::register_thread_initializied\n", tid);
     pthread_mutex_lock(&init_lock);
     init_count++;
     pthread_cond_signal(&init_cond);
@@ -356,7 +357,8 @@ static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
        printf("memcached/thread.c :: notify_worker(), item is not null\n");
     }
 #endif
-    printf("memcached/thread.c :: notify_worker()\n");
+    pthread_t tid = pthread_self();
+    printf("[%lu] memcached/thread.c :: notify_worker()\n", tid);
     cq_push(t->ev_queue, item);
 #ifdef HAVE_EVENTFD
     uint64_t u = 1;
@@ -406,6 +408,8 @@ static void create_worker(void *(*func)(void *), void *arg) {
 #if ENABLE_PRINT
     printf("memcached/thread.c :: create_worker()\n");
 #endif
+    pthread_t tid = pthread_self();
+    printf("[%lu] memcached/thread.c :: create_worker()\n", tid);
     pthread_attr_t  attr;
     int             ret;
 
@@ -433,9 +437,8 @@ void accept_new_conns(const bool do_accept) {
 /****************************** LIBEVENT THREADS *****************************/
 
 static void setup_thread_notify(LIBEVENT_THREAD *me, struct thread_notify *tn, void(*cb)(int, short, void *)) {
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: setup_thread_notify()\n");
-#endif
+    pthread_t tid = pthread_self();
+    printf("[%lu] thread.c :: setup_thread_notify()\n", tid);
 #ifdef HAVE_EVENTFD
     event_set(&tn->notify_event, tn->notify_event_fd,
               EV_READ | EV_PERSIST, cb, me);
@@ -458,7 +461,8 @@ static void setup_thread(LIBEVENT_THREAD *me) {
 #if ENABLE_PRINT
     printf("memcached/thread.c :: setup_thread()\n");
 #endif
-
+    pthread_t tid = pthread_self();
+    printf("[%lu] thread.c setup_thread \n", tid);
 #if defined(LIBEVENT_VERSION_NUMBER) && LIBEVENT_VERSION_NUMBER >= 0x02000101
     //여기 실행
     //이벤트 루프(event base)를 초기화하는 코드
@@ -485,8 +489,9 @@ static void setup_thread(LIBEVENT_THREAD *me) {
     setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
 #if ENABLE_MPI_FUNCTIONS
-    // setup_thread_notify(me, &me->n, thread_libevent_process);
-    // setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
+    printf("[%lu] thread.c setup_thread_notify, thread_libevent_process \n", tid);
+    setup_thread_notify(me, &me->n, thread_libevent_process);
+    setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
 #endif
     pthread_mutex_init(&me->ion_lock, NULL);
     STAILQ_INIT(&me->ion_head);
@@ -576,7 +581,8 @@ static void setup_thread(LIBEVENT_THREAD *me) {
  * Worker thread: main event loop
  */
 static void *worker_libevent(void *arg) {
-    printf("worker_libevent\n");
+    pthread_t tid = pthread_self();
+    printf("[%lu] worker_libevent\n", tid);
 #if ENABLE_SOCKET_FUNCTIONS
     LIBEVENT_THREAD *me = arg;
     printf("memcached::thread.c worker_libevent()\n");
@@ -666,7 +672,8 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
 #if ENABLE_PRINT
     printf("memcached/thread.c :: thread_libevent_process 1\n");
 #endif
-    printf("memcached/thread.c :: thread_libevent_process 1\n");
+    pthread_t tid = pthread_self();
+    printf("[%lu] memcached/thread.c :: thread_libevent_process 1\n", tid);
     CQ_ITEM *item;
     conn *c;
     uint64_t ev_count = 0; // max number of events to loop through this run.
@@ -1267,6 +1274,7 @@ void memcached_thread_init(int nthreads, void *arg) {
         exit(1);
     }
 
+    pthread_t tid = pthread_self();
     for (i = 0; i < nthreads; i++) {
         //printf("memcached/thread.c :: memcached_thread_init() 0, threads[%d]->open_bundle : %d\n", i, threads[i].open_bundle);
         memcached_thread_notify_init(&threads[i].n);
@@ -1275,6 +1283,8 @@ void memcached_thread_init(int nthreads, void *arg) {
         threads[i].storage = arg;
 #endif
         threads[i].thread_baseid = i;
+        
+        printf("[%lu] thread.c :: memcached_thread_init, setup_thread 호출\n", tid);
         setup_thread(&threads[i]);
         /* Reserve three fds for the libevent base, and two for the pipe */
         stats_state.reserved_fds += 5;
@@ -1287,17 +1297,11 @@ void memcached_thread_init(int nthreads, void *arg) {
 
     /* Wait for all the threads to set themselves up before returning. */
     pthread_mutex_lock(&init_lock);
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: memcached_thread_init() lock \n");
-#endif
+
     wait_for_thread_registration(nthreads);
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: memcached_thread_init() unlock \n");
-#endif
+
     pthread_mutex_unlock(&init_lock);
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: memcached_thread_init() return \n");
-#endif
+
 }
 
 
