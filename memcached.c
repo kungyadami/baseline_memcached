@@ -5057,6 +5057,7 @@ static int _mc_meta_save_cb(const char *tag, void *ctx, void *data) {
     // NOTE: oldest_live is a rel_time_t, which aliases for unsigned int.
     // should future proof this with a 64bit upcast, or fetch value from a
     // converter function/macro?
+    printf("memcached.c::_mc_meta_save_cb(), oldest_live \n");
     restart_set_kv(ctx, "oldest_live", "%u", settings.oldest_live);
     // TODO: use uintptr_t etc? is it portable enough?
     restart_set_kv(ctx, "mmap_oldbase", "%p", meta->mmap_base);
@@ -6522,22 +6523,26 @@ bool mpi_resp_start(struct mpi_conn_info *c) {
 static volatile bool running = true;
 static time_t monotonic_start;
 void* assoc_expand_check_thread(void *arg){
-
     struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    monotonic_start = ts.tv_sec;
+    struct timeval t = {.tv_sec = 1, .tv_usec = 0};
 
     while (running) {
         sleep(1);
 
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        current_time = ts.tv_sec - monotonic_start;
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+
+        current_time = (rel_time_t) (tv.tv_sec - process_started);
+        printf("current_time : %d\n", current_time);
 
         // hash table expansion check
         assoc_start_expand(stats_state.curr_items);
 
-        // HUP signal 처리 등
+        if (settings.sig_hup) {
+            settings.sig_hup = false;
+            authfile_load(settings.auth_file);
+        }
+
     }
     return NULL;
 }

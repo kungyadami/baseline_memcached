@@ -673,9 +673,7 @@ int do_item_replace(item *it, item *new_it, const uint32_t hv, const uint64_t ca
 }
 
 void item_flush_expired(void) {
-#if ENABLE_PRINT
-    printf("memcached/item.c :: item_flush_expired() \n");
-#endif
+    printf("memcached/item.c :: item_flush_expired(), oldest_live 호출 \n");
     int i;
     item *iter, *next;
     if (settings.oldest_live == 0)
