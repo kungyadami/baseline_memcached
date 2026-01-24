@@ -118,7 +118,7 @@ void set_cas_id(uint64_t new_cas) {
 int item_is_flushed(item *it) {
     //printf("memcached/items.c :: item_is_flushed() \n");
     rel_time_t oldest_live = settings.oldest_live;
-    printf("memcached/items.c :: item_is_flushed()  oldest_live : %d | it->time : %d | current_time : %d \n", oldest_live, it->time, current_time);
+    //printf("memcached/items.c :: item_is_flushed()  oldest_live : %d | it->time : %d | current_time : %d \n", oldest_live, it->time, current_time);
     if (it->time <= oldest_live && oldest_live <= current_time){
         //printf("memcached/items.c :: item_is_flushed() 1\n");
         return 1;
@@ -209,10 +209,8 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
             // total bytes 값으로 0을 보낸다. 이 루틴은 항상 제거를 수행하거나, HOT_LRU -> COLD_LRU로 이동시키는 것을 강제하기만 한다.
             //이 주석을 작성할 때에는 total bytes가 COLD_LRU에서 전혀 사용되지 않았음.
-            printf("lru_pull_tail 호출5\n");
             if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) { //여기 들어감
                 if (settings.lru_segmented) {
-                    printf("lru_pull_tail 호출6\n");
                     lru_pull_tail(id, HOT_LRU, 0, 0, 0, NULL);
                 } else {
                     break;
@@ -282,7 +280,7 @@ item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain) {
 item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t flags,
                     const rel_time_t exptime, const int nbytes) {
 #if ENABLE_PRINT
-    printf("memcached/item.c :: do_item_alloc()\n");
+    printf("memcached/item.c :: do_item_alloc(), settings.oldest_live : %d\n", settings.oldest_live);
     printf("\t key : %s\n", key); //key_0
     printf("\t nkey : %zu\n", nkey);
     printf("\t nbytes : %d\n", nbytes);
@@ -297,8 +295,7 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
 
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
 #if ENABLE_PRINT
-    printf("memcached/item.c :: do_item_alloc() - [2]\n");
-    printf("\t ntotal : %u\n", ntotal);
+    printf("memcached/item.c :: do_item_alloc() - [2], settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
@@ -600,23 +597,23 @@ void do_item_unlink_nolock(item *it, const uint32_t hv) {
 
 void do_item_remove(item *it) {
 #if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_remove()1\n");
+    printf("memcached/items.c :: do_item_remove()1, settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
     assert(it->refcount > 0);
 #if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_remove()2, it->refcount : %d\n", it->refcount);
+    printf("memcached/items.c :: do_item_remove()2, it->refcount : %d | settings.oldest_live : %d\n", it->refcount, settings.oldest_live);
 #endif
 
     if (refcount_decr(it) == 0) {
         #if ENABLE_PRINT
-            printf("memcached/items.c :: do_item_remove()2-1\n");
+            printf("memcached/items.c :: do_item_remove()2-1, settings.oldest_live : %d\n", settings.oldest_live);
         #endif
         item_free(it);
     }
 #if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_remove()3\n");
+    printf("memcached/items.c :: do_item_remove()3, settings.oldest_live : %d\n",settings.oldest_live);
 #endif
 }
 
@@ -1182,7 +1179,6 @@ item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
 int lru_pull_tail(const int orig_id, const int cur_lru,
         const uint64_t total_bytes, const uint8_t flags, const rel_time_t max_age,
         struct lru_pull_tail_return *ret_it) {
-    //printf("memcached/item.c :: lru_pull_tail()\n");
     item *it = NULL;
     int id = orig_id;
     int removed = 0;
@@ -1230,7 +1226,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 search->refcount = 1;
                 /* This will call item_remove -> item_free since refcnt is 1 */
                 STORAGE_delete(ext_storage, search);
-                printf("memcached::item.c :: lru_pull_tail(), do_item_unlink_nolock 호출\n");
                 do_item_unlink_nolock(search, hv);
                 item_trylock_unlock(hold_lock);
                 continue;
@@ -1245,7 +1240,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 itemstats[id].expired_unfetched++;
             }
             /* refcnt 2 -> 1 */
-            printf("memcached::item.c :: lru_pull_tail()2, do_item_unlink_nolock 호출\n");
             do_item_unlink_nolock(search, hv); //여기서 계속 do_item_unlink_nolock()이 호출되면서, 해시테이블에서 데이터가 삭제됨. 삭제되는 기준은?
             STORAGE_delete(ext_storage, search);
             /* refcnt 1 -> 0 -> item_free */
@@ -1315,7 +1309,6 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     }
                     //LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
-                    printf("memcached::item.c :: lru_pull_tail()3, do_item_unlink_nolock 호출\n");
                     do_item_unlink_nolock(search, hv);
                     removed++;
                     if (settings.slab_automove == 2) {
@@ -1490,7 +1483,6 @@ static int lru_maintainer_juggle(const int slabs_clsid) {
     if (settings.temp_lru) {
         /* Only looking for reclaims. Run before we size the LRU. */
         for (i = 0; i < 500; i++) {
-            printf("lru_pull_tail 호출\n");
             if (lru_pull_tail(slabs_clsid, TEMP_LRU, 0, 0, 0, NULL) <= 0) {
                 break;
             } else {

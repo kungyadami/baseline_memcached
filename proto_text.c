@@ -612,7 +612,7 @@ int try_read_command_ascii(conn *c) {
 static inline bool set_noreply_maybe(conn *c, token_t *tokens, size_t ntokens)
 {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: set_noreply_maybe()\n");
+    printf("memcached/proto_text.c :: set_noreply_maybe(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     int noreply_index = ntokens - 2;
 
@@ -3645,7 +3645,7 @@ stop:
 
 void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_complete_nread_ascii\n");
+    printf("memcached/proto_text.c :: mpi_complete_nread_ascii, settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     assert(c != NULL);
 
@@ -3767,7 +3767,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 
 void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_command_ascii()\n");
+    printf("memcached/proto_text.c :: mpi_process_command_ascii(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
 
     token_t tokens[MAX_TOKENS];
@@ -3844,7 +3844,7 @@ static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *token
 {
     //잘못 답하는경우인듯
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_set_noreply_maybe()\n");
+    printf("memcached/proto_text.c :: mpi_set_noreply_maybe(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     int noreply_index = ntokens - 2;
 
@@ -3865,7 +3865,7 @@ static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *token
 
 void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_update_command()\n");
+    printf("memcached/proto_text.c :: mpi_process_update_command, settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     char *key;
     size_t nkey;
@@ -3878,7 +3878,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 
     assert(c != NULL);
 
-    set_noreply_maybe(c, tokens, ntokens);
+    mpi_set_noreply_maybe(c, tokens, ntokens);
 
     if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) { //error
         mpi_out_string(c, "CLIENT_ERROR bad command line format");
@@ -3986,7 +3986,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 
 int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii()\n");
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     char *el, *cont;
 

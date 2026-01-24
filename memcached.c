@@ -162,9 +162,8 @@ enum transmit_result {
     
 #endif
 
-#define NUM_MPI_RANKS 4
 // #define DATA_NUM 10000
-int nreqs[NUM_MPI_RANKS];
+// int nreqs;
 // unsigned long mpi_thread_timer_read[NUM_MPI_RANKS];
 // unsigned long mpi_thread_timer_write[NUM_MPI_RANKS];
 // unsigned long mpi_thread_timer_etc[NUM_MPI_RANKS];
@@ -1308,7 +1307,7 @@ static mc_resp* resp_allocate(conn *c) {
 
 void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: resp_free()\n");
+    printf("memcached/memcached.c :: resp_free(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     mc_resp_bundle *b = resp->bundle;
 
@@ -1452,6 +1451,7 @@ mc_resp* resp_finish(conn *c, mc_resp *resp) {
         c->resp = NULL;
     }
     resp_free(c->thread, resp);
+    
     return next;
 }
 
@@ -1962,11 +1962,10 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
         }
 
         if (do_store) { //[yedam] 여기서 데이터 저장했다고 말해주는듯
-            do_item_link(it, hv, cas_in);
 #if ENABLE_PRINT
-            printf("memcached/memcached.c :: do_store_item() - call do_item_link, it->time : %d\n", it->time);
-            printf("memcached/memcached.c :: do_store_item, STORED ITEM : key : %s\n", key);
+            printf("memcached/memcached.c :: do_store_item() - call do_item_link, it->time : %d | settings.oldest_live : %d\n", it->time, settings.oldest_live);
 #endif
+            do_item_link(it, hv, cas_in);
             stored = STORED;
         }
     }
@@ -5281,20 +5280,6 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 
 #if ENABLE_MPI_FUNCTIONS
 
-// void thread_func_for_mpi(void *thread_arg){
-
-//     struct mpi_conn_thread *thread = (struct mpi_conn_thread*)thread_arg;
-//     //printf("memcached/memcached.c :: thread_func_for_mpi() [%d] thread : %p\n", thread->tid, thread->client.thread);
-//     while(true){
-//         mpi_drive_machine(&thread->client, thread->tid);
-//         if(nreqs[thread->tid] == DATA_NUM){
-//             printf("[read time] = %lu nsec\n", mpi_thread_timer_read[thread->tid]);
-//             printf("[write time] = %lu nsec\n", mpi_thread_timer_write[thread->tid]);
-//             printf("[etc time] = %lu nsec\n", mpi_thread_timer_etc[thread->tid]);
-//         }
-//     }
-// }
-
 bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c) {
     // Might as well start with x2 and work from there.
     size_t size = c->rsize * 2;
@@ -5537,7 +5522,7 @@ static void mpi_conn_close(struct mpi_conn_info *c) {
 
 static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){ 
 #if ENABLE_PRINT
-     printf("memcached/mpi_try_read_network, client->rbytes : %d\n",  c->rbytes);
+     printf("memcached/mpi_try_read_network, client->rbytes : %d | settings.oldest_live : %d\n",  c->rbytes, settings.oldest_live);
 #endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
@@ -5628,7 +5613,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 // returns next response in chain.
 mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_resp_finish()\n");
+    printf("memcached/memcached.c :: mpi_resp_finish(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     mc_resp *next = resp->next;
 
@@ -5792,7 +5777,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     clock_gettime(CLOCK_REALTIME, &start);
 #endif
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_sendmsg()\n");
+    printf("memcached/memcached.c :: mpi_sendmsg(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     /*여기는 실제 transmit 함수 부분. 내가 그냥 conn_mwrite/conn_write 에서 바로 메세지를 보낼 수 있게 통합함.*/
 
@@ -5873,7 +5858,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
 
 static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_rbuf_alloc()\n");
+    printf("memcached/memcached.c :: mpi_rbuf_alloc(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     if (c->rbuf == NULL) {
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
@@ -5891,7 +5876,7 @@ static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
 
 static void mpi_rbuf_release(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_rbuf_release()\n");
+    printf("memcached/memcached.c :: mpi_rbuf_release(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     pthread_t tid = pthread_self();
 
@@ -5910,7 +5895,7 @@ static void mpi_rbuf_release(struct mpi_conn_info *c) {
 
 static void mpi_reset_cmd_handler(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_reset_cmd_handler()\n");
+    printf("memcached/memcached.c :: mpi_reset_cmd_handler(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     pthread_t tid = pthread_self();
     c->cmd = -1;
@@ -5958,6 +5943,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
     enum try_read_result res;
     bool stop = false;
     const char *str;
+    int nreqs = settings.reqs_per_event;
     pthread_t ttid = pthread_self();   // 현재 스레드 ID 얻기
 
     while(!stop){
@@ -6240,13 +6226,16 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
-            //--nreqs;
+            --nreqs;
             if (nreqs >= 0) {
+                //printf("1\n");
                 mpi_reset_cmd_handler(client); //여기로 들어감
             } else if (client->resp_head) { //여기 안들어감
+                //printf("2\n");
                 // flush response pipe on yield.
                 client->state = conn_mwrite;
             } else { //여기 안들어감
+                //printf("3\n");
                 pthread_mutex_lock(&client->thread->stats.mutex);
                 client->thread->stats.conn_yields++;
                 pthread_mutex_unlock(&client->thread->stats.mutex);
@@ -6303,7 +6292,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     if(client->item)
                     // Free up IO wraps and any half-uploaded items.
                     mpi_conn_release_items(client);
-
                     client->state = conn_new_cmd;
                     if (client->close_after_write) {
                         client->state = conn_closing;
@@ -6312,8 +6300,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     if (settings.verbose > 0)
                         fprintf(stderr, "Unexpected state %d\n", client->state);
                     client->state = conn_closing;
+
                 }
-                nreqs[client->rank]++;
+                nreqs++; //이걸 주석처리하지 않으면 settings.oldest_live 값이 계속 올라가는 문제가 발생함. 일단 주석처리했는데 이유를 더 상세하게 알아야할듯
                 break;
 
             case TRANSMIT_INCOMPLETE:
@@ -6383,7 +6372,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 
 void mpi_out_string(struct mpi_conn_info *c, const char *str) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_out_string()\n");
+    printf("memcached/memcached.c :: mpi_out_string(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     size_t len;
     assert(c != NULL);
@@ -6424,7 +6413,7 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
 
 static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_resp_allocate()\n");
+    printf("memcached/memcached.c :: mpi_resp_allocate(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
 
     LIBEVENT_THREAD *th = c->thread;
@@ -6493,7 +6482,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
 
 bool mpi_resp_start(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_resp_start()\n");
+    printf("memcached/memcached.c :: mpi_resp_start(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     mc_resp *resp = mpi_resp_allocate(c);
     if (!resp) {
@@ -6533,7 +6522,7 @@ void* assoc_expand_check_thread(void *arg){
         gettimeofday(&tv, NULL);
 
         current_time = (rel_time_t) (tv.tv_sec - process_started);
-        printf("current_time : %d\n", current_time);
+        //printf("current_time : %d\n", current_time);
 
         // hash table expansion check
         assoc_start_expand(stats_state.curr_items);
