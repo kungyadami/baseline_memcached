@@ -118,7 +118,7 @@ void set_cas_id(uint64_t new_cas) {
 int item_is_flushed(item *it) {
     //printf("memcached/items.c :: item_is_flushed() \n");
     rel_time_t oldest_live = settings.oldest_live;
-    //printf("memcached/items.c :: item_is_flushed()  oldest_live : %d | it->time : %d | current_time : %d \n", oldest_live, it->time, current_time);
+    printf("memcached/items.c :: item_is_flushed()  oldest_live : %d | it->time : %d | current_time : %d \n", oldest_live, it->time, current_time);
     if (it->time <= oldest_live && oldest_live <= current_time){
         //printf("memcached/items.c :: item_is_flushed() 1\n");
         return 1;
@@ -189,11 +189,16 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
      * locked items are on the tail, you want them to fall out and cause
      * occasional OOM's, rather than internally work around them.
      * This also gives one fewer code path for slab alloc/free
+     * 
+     * 이용 가능한 메모리 공간이 없을 경우, 직접 LRU 조정/제거를 시도한다.
+     * lru_pull_tail을 단순하게 하기 위한 race
+     * lock된 아이템이 LRU tail에 있는 경우, 내부에서 처리하기보다는 그 아이템들이 자연스럽게 떨어져나가거나, 가끔 OOM이 발생하게 둘 수 있다.
+     * 이는 slab 할당/해제에 대한 일부 코드 경로를 줄여주기도 한다.
      */
     for (i = 0; i < 10; i++) {
         /* Try to reclaim memory first */
-        if (!settings.lru_segmented) {
-            printf("lru_pull_tail 호출4\n");
+        // 메모리를 먼저 반환하려고 시도한다
+        if (!settings.lru_segmented) { //여기 들어가진 않는 것 같다
             lru_pull_tail(id, COLD_LRU, 0, 0, 0, NULL);
         }
         it = slabs_alloc(id, 0);
@@ -202,7 +207,8 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
             // We send '0' in for "total_bytes" as this routine is always
             // pulling to evict, or forcing HOT -> COLD migration.
             // As of this writing, total_bytes isn't at all used with COLD_LRU.
-            //printf("memcached/item.c :: do_item_alloc_pull()2\n");
+            // total bytes 값으로 0을 보낸다. 이 루틴은 항상 제거를 수행하거나, HOT_LRU -> COLD_LRU로 이동시키는 것을 강제하기만 한다.
+            //이 주석을 작성할 때에는 total bytes가 COLD_LRU에서 전혀 사용되지 않았음.
             printf("lru_pull_tail 호출5\n");
             if (lru_pull_tail(id, COLD_LRU, 0, LRU_PULL_EVICT, 0, NULL) <= 0) { //여기 들어감
                 if (settings.lru_segmented) {
@@ -432,9 +438,6 @@ void do_item_link_fixup(item *it) {
     item **head, **tail;
     int ntotal = ITEM_ntotal(it);
     uint32_t hv = hash(ITEM_key(it), it->nkey);
-#if ENABLE_PRINT
-        printf("[yedam] items.c :: do_item_link_fixup()\n");
-#endif
     assoc_insert(it, hv);
 
     head = &heads[it->slabs_clsid];
@@ -534,17 +537,11 @@ static void item_unlink_q(item *it) {
 }
 
 int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
-#if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_link() , it->time : %d\n", it->time);
-#endif
     //여기서 insert 진행하는 것 같다
     MEMCACHED_ITEM_LINK(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
     it->it_flags |= ITEM_LINKED;
     it->time = current_time;
-#if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_link()2 - it->time : %d \n", it->time);
-#endif
 
     STATS_LOCK();
     stats_state.curr_bytes += ITEM_ntotal(it);
@@ -555,9 +552,6 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, cas);
-#if ENABLE_PRINT
-    printf("[yedam] items.c :: do_item_link()3\n");
-#endif
     assoc_insert(it, hv);
     item_link_q(it);
     refcount_incr(it);
@@ -713,7 +707,7 @@ void item_flush_expired(void) {
                 if ((iter->it_flags & ITEM_SLABBED) == 0) {
                     STORAGE_delete(ext_storage, iter);
                     // nolock version because we hold the LRU lock already.
-                    printf("memcached::item.c :: item_flush_expired() \n");
+                    printf("memcached::item.c :: item_flush_expired(), do_item_unlink_nolock 호출 \n");
                     do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey));
                 }
                 item_trylock_unlock(hold_lock);
@@ -1070,10 +1064,7 @@ void item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /** wrapper around assoc_find which does the lazy expiration logic */
 item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVENT_THREAD *t, const bool do_update) {
-    struct timespec hash_op_start, hash_op_end;
-    // #if HASH_BREAKDOWN
-    //     clock_gettime(CLOCK_REALTIME, &hash_op_start);
-    // #endif
+    //printf("memcached/memcached.c :: do_item_get()\n");
     item *it = assoc_find(key, nkey, hv);
     if (it != NULL) {
         refcount_incr(it);
@@ -1081,9 +1072,6 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
     int was_found = 0;
 
     if (settings.verbose < 2) {
-//#if ENABLE_PRINT
-        //printf("[yedam] items.c :: do_item_get() 4, settings.verbose : %d\n", settings.verbose);
-//#endif
         int ii;
         if (it == NULL) {
             //fprintf(stderr, "> NOT FOUND \n");
@@ -1094,19 +1082,15 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             //fprintf(stderr, "%c", key[ii]);
         }
     }
-#if ENABLE_PRINT
-    printf("[yedam] items.c :: do_item_get() 5\n");
-#endif
 
     if (it != NULL) {
-#if ENABLE_PRINT
-        printf("[yedam] items.c :: do_item_get() 6\n");
-#endif
+        /*
+        set 연산 : 아무 곳도 들어가지 않음
+        get 연산 : else문에 들어가고, do_update가 참이라 do_item_bump로 들어감
+        */
+
         was_found = 1;
         if (item_is_flushed(it)) {
-#if ENABLE_PRINT
-            printf("[yedam] items.c :: do_item_get() 7\n");
-#endif
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1119,9 +1103,6 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 2;
         } else if (it->exptime != 0 && it->exptime <= current_time) {
-#if ENABLE_PRINT
-            printf("[yedam] items.c :: do_item_get() 8\n");
-#endif
             do_item_unlink(it, hv);
             STORAGE_delete(t->storage, it);
             do_item_remove(it);
@@ -1134,19 +1115,14 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
             }
             was_found = 3;
         } else { //여기 들어감
-#if ENABLE_PRINT
-            printf("[yedam] items.c :: do_item_get() 9\n");
-#endif
             if (do_update) {
+                //printf("memcached/memcached.c :: do_item_get() do update\n");
                 do_item_bump(t, it, hv);
             }
             DEBUG_REFCNT(it, '+');
         }
     }
-    //printf("[yedam] items.c :: do_item_get() ?? t->l : %d\n", t->l);
-    if (settings.verbose > 2){
-        //fprintf(stderr, "\n");
-    }
+
     /* For now this is in addition to the above verbose logging. */
     //yedam
     // LOGGER_LOG(t->l, LOG_FETCHERS, LOGGER_ITEM_GET, NULL, was_found, key,
@@ -1193,7 +1169,7 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
 
 item *do_item_touch(const char *key, size_t nkey, uint32_t exptime,
                     const uint32_t hv, LIBEVENT_THREAD *t) {
-    //printf("[yedam] items.c :: do_item_touch()\n");
+    printf("[yedam] items.c :: do_item_touch()\n");
     item *it = do_item_get(key, nkey, hv, t, DO_UPDATE);
     if (it != NULL) {
         it->exptime = exptime;
@@ -1256,7 +1232,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                 search->refcount = 1;
                 /* This will call item_remove -> item_free since refcnt is 1 */
                 STORAGE_delete(ext_storage, search);
-                printf("memcached::item.c :: lru_pull_tail() \n");
+                printf("memcached::item.c :: lru_pull_tail(), do_item_unlink_nolock 호출\n");
                 do_item_unlink_nolock(search, hv);
                 item_trylock_unlock(hold_lock);
                 continue;
@@ -1264,15 +1240,15 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
         }
 
         /* Expired or flushed */
-        if ((search->exptime != 0 && search->exptime < current_time)
-            || item_is_flushed(search)) {
+        if ((search->exptime != 0 && search->exptime < current_time) || item_is_flushed(search)) {
+            //printf("memcached::item.c :: lru_pull_tail()2, search->exptime : %d | current time : %d \n", search->exptime, current_time);
             itemstats[id].reclaimed++;
             if ((search->it_flags & ITEM_FETCHED) == 0) {
                 itemstats[id].expired_unfetched++;
             }
             /* refcnt 2 -> 1 */
-            printf("memcached::item.c :: lru_pull_tail()2\n");
-            do_item_unlink_nolock(search, hv);
+            printf("memcached::item.c :: lru_pull_tail()2, do_item_unlink_nolock 호출\n");
+            do_item_unlink_nolock(search, hv); //여기서 계속 do_item_unlink_nolock()이 호출되면서, 해시테이블에서 데이터가 삭제됨. 삭제되는 기준은?
             STORAGE_delete(ext_storage, search);
             /* refcnt 1 -> 0 -> item_free */
             do_item_remove(search);
@@ -1341,7 +1317,7 @@ int lru_pull_tail(const int orig_id, const int cur_lru,
                     }
                     //LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);
                     STORAGE_delete(ext_storage, search);
-                    printf("memcached::item.c :: lru_pull_tail()3\n");
+                    printf("memcached::item.c :: lru_pull_tail()3, do_item_unlink_nolock 호출\n");
                     do_item_unlink_nolock(search, hv);
                     removed++;
                     if (settings.slab_automove == 2) {
@@ -1789,8 +1765,8 @@ int stop_lru_maintainer_thread(void) {
 
 int start_lru_maintainer_thread(void *arg) {
     int ret;
-    pthread_t tid = pthread_self();
-    printf("[%lu] items.c::start_lru_maintainer_thread(), pthread create lru maintainer thread\n", tid);
+    // pthread_t tid = pthread_self();
+    // printf("[%lu] items.c::start_lru_maintainer_thread(), pthread create lru maintainer thread\n", tid);
 
     pthread_mutex_lock(&lru_maintainer_lock);
     do_run_lru_maintainer_thread = 1;

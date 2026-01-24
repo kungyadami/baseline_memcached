@@ -167,8 +167,8 @@ static void assoc_expand(void) {
 #if ENABLE_PRINT
         printf("memcached::assoc.c :: assoc_expand()\n");
 #endif
-    //pthread_t tid = pthread_self();
-    //printf("[%lu] assoc_expand\n",tid);
+    pthread_t tid = pthread_self();
+    printf("[%lu] assoc_expand\n",tid);
     old_hashtable = primary_hashtable;
 
     primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
@@ -191,7 +191,8 @@ static void assoc_expand(void) {
 
 void assoc_start_expand(uint64_t curr_items) {
     pthread_t tid = pthread_self();
-    //printf("[%lu] assoc_start_expand, curr_items : %d\n",tid, curr_items);
+    // printf("[%lu] assoc_start_expand, curr_items : %d | threshold? : %d\n",tid, curr_items, (hashsize(hashpower)*3)/2);
+    // printf("[%lu] assoc_start_expand, hashpower : %d | HASHPOWER_MAX : %d\n",tid, hashpower, HASHPOWER_MAX);
     if (pthread_mutex_trylock(&maintenance_lock) == 0) {
         if (curr_items > (hashsize(hashpower) * 3) / 2 && hashpower < HASHPOWER_MAX) {
             //printf("[%lu] assoc_start_expand, maintenance cond에게 시그널 보냄\n",tid);
@@ -223,10 +224,6 @@ int assoc_insert(item *it, const uint32_t hv) {
 }
 
 void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: assoc_delete()\n");
-#endif
-    printf("memcached::assoc.c :: assoc_delete()\n");
     item **before = _hashitem_before(key, nkey, hv);
 
     if (*before) {
@@ -252,8 +249,6 @@ static volatile int do_run_maintenance_thread = 1;
 int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
-    pthread_t tid = pthread_self();
-    printf("[%lu] assoc.c :: assoc_maintenance_thread1\n", tid);
     mutex_lock(&maintenance_lock);
     while (do_run_maintenance_thread) {
         int ii = 0;
@@ -298,9 +293,6 @@ static void *assoc_maintenance_thread(void *arg) {
                 item_lock = NULL;
             }
         }
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: assoc_maintenance_thread()3\n");
-#endif
 
         if (!expanding) {
             /* We are done expanding.. just wait for next invocation */
@@ -313,7 +305,6 @@ static void *assoc_maintenance_thread(void *arg) {
              * wait times.
              */
             if (do_run_maintenance_thread) {
-                printf("[%lu] assoc.c :: assoc_maintenance_thread2\n",tid);
                 pause_threads(PAUSE_ALL_THREADS);
                 assoc_expand();
                 pause_threads(RESUME_ALL_THREADS);
@@ -321,18 +312,12 @@ static void *assoc_maintenance_thread(void *arg) {
         }
     }
     mutex_unlock(&maintenance_lock);
-#if ENABLE_PRINT
-    printf("memcached::assoc.c :: assoc_maintenance_thread()4\n");
-#endif
     return NULL;
 }
 
 static pthread_t maintenance_tid;
 
 int start_assoc_maintenance_thread(void) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: start_assoc_maintenance_thread()\n");
-#endif
     int ret;
     char *env = getenv("MEMCACHED_HASH_BULK_MOVE");
     if (env != NULL) {
@@ -347,17 +332,11 @@ int start_assoc_maintenance_thread(void) {
         fprintf(stderr, "Can't create thread: %s\n", strerror(ret));
         return -1;
     }
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: start_assoc_maintenance_thread()2\n");
-#endif
     thread_setname(maintenance_tid, "mc-assocmaint");
     return 0;
 }
 
 void stop_assoc_maintenance_thread(void) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: stop_assoc_maintenance_thread()\n");
-#endif
     mutex_lock(&maintenance_lock);
     do_run_maintenance_thread = 0;
     pthread_cond_signal(&maintenance_cond);
@@ -375,10 +354,6 @@ struct assoc_iterator {
 };
 
 void *assoc_get_iterator(void) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: assoc_get_iterator()\n");
-#endif
-    //printf("memcached::assoc.c :: assoc_get_iterator()\n");
     struct assoc_iterator *iter = calloc(1, sizeof(struct assoc_iterator));
     if (iter == NULL) {
         return NULL;
@@ -393,9 +368,6 @@ void *assoc_get_iterator(void) {
 }
 
 bool assoc_iterate(void *iterp, item **it) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: assoc_iterate()\n");
-#endif
     struct assoc_iterator *iter = (struct assoc_iterator *) iterp;
     *it = NULL;
     // - if locked bucket and next, update next and return
@@ -440,9 +412,6 @@ bool assoc_iterate(void *iterp, item **it) {
 }
 
 void assoc_iterate_final(void *iterp) {
-#if ENABLE_PRINT
-        printf("memcached::assoc.c :: assoc_iterate_final()\n");
-#endif
     struct assoc_iterator *iter = (struct assoc_iterator *) iterp;
     if (iter->bucket_locked) {
         item_unlock(iter->bucket);

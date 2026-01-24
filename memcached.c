@@ -1809,9 +1809,7 @@ static int _store_item_copy_data(int comm, item *old_it, item *new_it, item *add
 enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const uint32_t hv, int *nbytes, uint64_t *cas, uint64_t cas_in, bool cas_stale) {
     //여기 자체가 데이터를 저장하기 위해서 찾는 공간
     char *key = ITEM_key(it);
-//#if ENABLE_PRINT
-    //printf("memcached/memcached.c :: do_store_item(), it->time : %d\n", it->time);
-//#endif
+    //printf("memcached/memcached.c :: do_store_item()\n");
     item *old_it = do_item_get(key, it->nkey, hv, t, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
 
@@ -2453,9 +2451,6 @@ item* limited_get(const char *key, size_t nkey, LIBEVENT_THREAD *t, uint32_t exp
     if (should_touch) {
         it = item_touch(key, nkey, exptime, t);
     } else {
-#if ENABLE_PRINT
-        printf("memcached/memcached.c :: limited_get()\n");
-#endif
         it = item_get(key, nkey, t, do_update); //여기서 thread.c -> item_get()으로 간다
     }
     if (it && it->refcount > IT_REFCOUNT_LIMIT) {
@@ -2506,9 +2501,7 @@ enum delta_result_type do_add_delta(LIBEVENT_THREAD *t, const char *key, const s
     uint64_t value;
     int res;
     item *it;
-#if ENABLE_PRINT
-        printf("memcached/memcached.c :: do_add_delta()\n");
-#endif
+    printf("memcached/memcached.c :: do_add_delta()\n");
     it = do_item_get(key, nkey, hv, t, DONT_UPDATE);
     if (!it) {
         return DELTA_ITEM_NOT_FOUND;
@@ -5218,6 +5211,7 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
             if (!safe_strtoul(val, &val_uint)) {
                 reuse_mmap = -1;
             } else {
+                printf("memcached.c::_mc_meta_load_cb(), settings.oldest_live = val_uint\n", settings.oldest_live);
                 settings.oldest_live = val_uint;
             }
             break;
@@ -5564,19 +5558,20 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         #endif
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         int count;
-        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &count);
-        int err = MPI_Recv(c->rbuf, count, MPI_CHAR,
+        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+        //printf("count : %d\n", res);
         #if MPI_RECV_BREAKDOWN
             clock_gettime(CLOCK_REALTIME, &recv_end);
             MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
         #endif
 
-        c->rank = mpi_recv_status.MPI_SOURCE;
-        if(mpi_recv_status.MPI_TAG == END_TAG){
+        c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
+
+        if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
             completed_clients++;
             if(completed_clients == mpi_client_size){
                 // clock_gettime(CLOCK_REALTIME, &all_end);
@@ -5597,8 +5592,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
-        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-        int send_rank = mpi_recv_status.MPI_SOURCE;
+        //MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        //printf("res : %d\n", res);
+        //int send_rank = mpi_recv_status.MPI_SOURCE;
 
         if(res > 0){
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -6360,9 +6356,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
             #endif
-            printf("server elapsed_time : %lu sec\n", all_time);
+            //printf("server elapsed_time : %lu sec\n", all_time);
 
-            sleep(10);
+            //sleep(10);
             exit(0);
             break;
 
@@ -8019,8 +8015,8 @@ int main (int argc, char **argv) {
     }
 #endif
 #ifdef EXTSTORE
-    pthread_t temp_tid = pthread_self();
-    printf("[%lu] memcached_thread_init() 호출\n", temp_tid);
+    //pthread_t temp_tid = pthread_self();
+    //printf("[%lu] memcached_thread_init() 호출\n", temp_tid);
 
     memcached_thread_init(settings.num_threads, storage);
     init_lru_crawler(storage);

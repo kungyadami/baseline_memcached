@@ -703,9 +703,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 fail_length = true;
                 goto stop;
             }
-#if ENABLE_PRINT
-            printf("memcached/proto_text.c :: process_get_command 4\n");
-#endif
+            printf("memcached/proto_text.c :: process_get_command, limited_get 호출\n");
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
@@ -2914,7 +2912,7 @@ static void process_flush_all_command(conn *c, token_t *tokens, const size_t nto
     } else { /* exptime == 0 */
         new_oldest = current_time - 1;
     }
-
+    printf("memcached/proto_text.c :: process_flush_all_command, settings.oldest_live : %d\n", settings.oldest_live);
     settings.oldest_live = new_oldest;
     item_flush_expired();
     out_string(c, "OK");
@@ -3401,9 +3399,6 @@ void process_command_ascii(conn *c, char *command) {
 
 /* ntokens is overwritten here... shrug.. */
 static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tokens, size_t ntokens, bool return_cas, bool should_touch, int tid) {
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_get_command\n");
-#endif
     char *key;
     size_t nkey;
     item *it;
@@ -3415,9 +3410,6 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
     mc_resp *resp = c->resp;
 
     if (should_touch) {
-#if ENABLE_PRINT
-        printf("memcached/proto_text.c :: mpi_process_get_command 1\n");
-#endif
         // For get and touch commands, use first token as exptime
         if (!safe_strtol(tokens[1].value, &exptime_int)) {
             mpi_out_string(c, "CLIENT_ERROR invalid exptime argument");
@@ -3429,32 +3421,17 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 
     do {
         while(key_token->length != 0) {
-#if MPI_DEBUG
-            printf("memcached/proto_text.c :: mpi_process_get_command() tid : %d | key_token->length : %d\n", tid, key_token->length);
-#endif
-#if ENABLE_PRINT
-            printf("memcached/proto_text.c :: mpi_process_get_command 2\n");
-#endif
             bool overflow; // not used here.
             key = key_token->value;
             nkey = key_token->length;
 
             if (nkey > KEY_MAX_LENGTH) {
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command 3\n");
-#endif
                 fail_length = true;
                 goto stop;
             }
-#if ENABLE_PRINT
-            printf("memcached/proto_text.c :: mpi_process_get_command() 4\n");
-#endif
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command 5\n");
-#endif
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
             if (it) {
@@ -3467,9 +3444,6 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                  */
 
                 {
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command 6\n");
-#endif
                   MEMCACHED_COMMAND_GET(c->rank, ITEM_key(it), it->nkey,
                                         it->nbytes, ITEM_get_cas(it));
                   int nbytes = it->nbytes;
@@ -3483,10 +3457,6 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                  //printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
 
 #ifdef EXTSTORE
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command() - EXTSTORE \n");
-
-#endif
                   if (it->it_flags & ITEM_HDR) {
                       if (storage_get_item(c, it, resp) != 0) {
                           pthread_mutex_lock(&c->thread->stats.mutex);
@@ -3527,9 +3497,6 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                 }
 #endif
                 if (settings.verbose > 1) {
-#if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 7\n");
-#endif
                     int ii;
 #if ENABLE_FPRINT
                     fprintf(stderr, ">%d sending key ", c->rank);

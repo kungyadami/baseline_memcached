@@ -1290,6 +1290,7 @@ static void process_bin_flush(conn *c, char *extbuf) {
     } else {
         new_oldest = current_time - 1;
     }
+    printf("memcached/proto_bin.c :: process_bin_flush, settings.oldest_live : %d\n", settings.oldest_live);
     settings.oldest_live = new_oldest;
     item_flush_expired();
 

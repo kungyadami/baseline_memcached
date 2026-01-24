@@ -242,6 +242,7 @@ static void crawler_expired_eval(crawler_module_t *cm, item *search, uint32_t hv
 #ifdef EXTSTORE
         STORAGE_delete(storage, search);
 #endif
+        printf("memcached/crawler.c :: crawler_expired_eval(), do_item_unlink_nolock 호출\n");
         do_item_unlink_nolock(search, hv);
         do_item_remove(search);
     } else {
