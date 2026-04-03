@@ -74,6 +74,17 @@ typedef struct token_s {
     size_t length;
 } token_t;
 
+
+
+
+
+
+
+
+
+
+
+
 static void _finalize_mset(conn *c, int nbytes, enum store_item_type ret, uint64_t cas) {
     mc_resp *resp = c->resp;
     item *it = c->item;
@@ -376,14 +387,16 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
     assert(command != NULL && tokens != NULL && max_tokens > 1);
     size_t len = strlen(command);
     unsigned int i = 0;
-
-    s = e = command; //s, e에도 각각 'set key_0 0 0 7'이 들어있음
+    //printf("memcached/proto_text.c :: tokenize_command start \n");
+    s = e = command; //s, e에도 각각 'set key_0 0 0 7'이 들어있음. value는 없음 그건 다음에 들어올듯?
+    //printf("memcached/proto_text.c :: tokenize_command start \n");
     for (i = 0; i < len; i++) {
-        if (*e == ' ') {
+        //printf("i : %d\n", i);
+        if (*e == ' ') { //set 다음, key 끝난 다음, flag 끝난 다음, exptime 끝난 다음 이렇게 4번 들어감
             if (s != e) {
-                //printf("[%d]th tokenizing - *e is ' ' and s != e, e : %s\n",i, e);
-                tokens[ntokens].value = s;
-                //printf("[%d]th tokenizing - tokens value : %s\n", i, tokens[ntokens].value);
+                //printf("[%d]th tokenizing1 - *e is ' ' and s != e, e : %s\n",i, e);
+                tokens[ntokens].value = s; //set key_0 0 0 7 자체가 들어가고, 그 다음엔 key_0 0 0 7, 그 다음엔 0 0 7 ... 이런식
+                //printf("[%d]th tokenizing2 - tokens value : %s\n", i, tokens[ntokens].value);
                 tokens[ntokens].length = e - s;
                 ntokens++;
                 *e = '\0';
@@ -395,9 +408,15 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
             }
             s = e + 1;
         }
-        //printf("[%d]th tokenizing - e++, e : %s\n",i, e);
+        //printf("[%d]th tokenizing3 - e++, e : %s\n",i, e);
         e++;
     }
+
+    //tokens[0] -> set
+    //tokens[1] -> key값
+    //tokens[2] -> flag값
+    //tokens[3] -> exptime값
+    //tokens[4] -> value size 값
 
     if (s != e) {
         tokens[ntokens].value = s;
@@ -417,6 +436,130 @@ static size_t tokenize_command(char *command, token_t *tokens, const size_t max_
 #endif
     return ntokens;
 }
+
+
+#if ENABLE_MPI_FUNCTIONS
+//dpu가 get 요청을 했을 때, DPU는 그 데이터가 필요한 상황이므로 set 요청을 이 서버가 DPU에게 보내줘야함.
+void build_req_buffer(char* mpi_send_buf, char* dpu_send_buf, ssize_t offset, ssize_t *dpu_offset){
+    //VALUE 'key' 'flag' 'value_length'\r\n
+    //'value'\r\n
+    //END\r\n
+
+    //형식이기 때문에, 이것만
+    //set 'key' 'flag' 'value_length'\r\n
+    //'value'\r\n
+
+    //으로 바꾸면 될 것 같다고 생각함.
+    token_t tokens[MAX_TOKENS];
+    token_t sub_tokens[MAX_TOKENS];
+    size_t ntokens = 0;
+    size_t sub_ntokens = 0;
+    char *s, *e;
+    s = e = mpi_send_buf;
+
+    /**********   STEP 1. \r\n 기준으로 나누기     *********/
+    //printf("build_req_buffer\n");
+    for(int i=0; i<offset; i++){
+        if(*e == '\r'){
+            if(s != e){
+                tokens[ntokens].value = s;
+                tokens[ntokens].length = e - s;
+                ntokens++;
+                *e = '\0';
+                //printf("[중간 점검] tokens[%d].value : %s (%d)\n", ntokens-1, tokens[ntokens-1].value, tokens[ntokens-1].length);
+            }
+            if(*(e+1) == '\n'){
+                e += 2;
+            }else{
+                e += 1;
+            }
+            s = e;
+            continue;
+        }
+        e++;
+    }
+    //printf("build_req_buffer2\n");
+    sub_ntokens = tokenize_command(tokens[0].value, sub_tokens, MAX_TOKENS);
+    //printf("build_req_buffer3, sub_ntokens : %d\n", sub_ntokens);
+    /************     set 추가     ***************/
+    char* ptr = dpu_send_buf;
+    memcpy(ptr, "set ", 4);
+    ptr += 4;
+    *dpu_offset+=4;
+    // for(int i=1; i<sub_ntokens; i++){
+    //     memcpy(ptr, sub_tokens[i].value, sub_tokens[i].length);
+    //     ptr += sub_tokens[i].length;
+    //     *dpu_offset+=sub_tokens[i].length;
+    //     if (i != sub_ntokens - 1) {
+    //         *ptr = ' ';
+    //         ptr++;
+    //         (*dpu_offset)++;
+    //     }else{
+    //         *ptr++ = '\r';
+    //         *ptr++ = '\n';
+    //         *dpu_offset+=2;
+    //     }
+    // }
+
+        /************     key 추가     ***************/
+    memcpy(ptr, sub_tokens[1].value, sub_tokens[1].length); 
+    ptr += sub_tokens[1].length;
+    *dpu_offset+=sub_tokens[1].length;
+
+    *ptr = ' ';
+    ptr++;
+    (*dpu_offset)++;
+
+     /************     flags 추가     ***************/
+    memcpy(ptr, sub_tokens[2].value, sub_tokens[2].length); 
+    ptr += sub_tokens[2].length;
+    *dpu_offset+=sub_tokens[2].length;
+
+    *ptr = ' ';
+    ptr++;
+    (*dpu_offset)++;
+
+    /************     exptime 추가     ***************/
+    memcpy(ptr, "0 ", 2);
+    ptr += 2;
+    *dpu_offset+=2;
+
+     /************     bytes 추가     ***************/
+    memcpy(ptr, sub_tokens[3].value, sub_tokens[3].length); 
+    ptr += sub_tokens[3].length;
+    *dpu_offset+=sub_tokens[3].length;
+
+    *ptr++ = '\r';
+    *ptr++ = '\n';
+    *dpu_offset+=2;
+
+
+    memcpy(ptr, tokens[1].value, tokens[1].length);
+    ptr += tokens[1].length;
+    
+    *ptr++ = '\r';
+    *ptr++ = '\n';
+    *ptr++ = '\0';
+
+    *dpu_offset += (tokens[1].length + 2);
+
+    //printf("dpu_send_buf : %s\n", dpu_send_buf);
+
+    /************     key 추가     ***************/
+
+
+
+}
+#endif
+
+
+
+
+
+
+
+
+
 
 int try_read_command_asciiauth(conn *c) {
 #if ENABLE_PRINT
@@ -636,7 +779,7 @@ static inline int make_ascii_get_suffix(char *suffix, item *it, bool return_cas,
     printf("memcached/proto_text.c :: make_ascii_get_suffix\n");
 #endif
     char *p = suffix;
-    *p = ' ';
+    *p = ' '; //'VALUE key  '<-여기 끝이 p 위치
     p++;
     if (FLAGS_SIZE(it) == 0) {
         *p = '0';
@@ -703,7 +846,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 fail_length = true;
                 goto stop;
             }
-            printf("memcached/proto_text.c :: process_get_command, limited_get 호출\n");
+            //printf("memcached/proto_text.c :: process_get_command, limited_get 호출\n");
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
@@ -733,6 +876,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                   p += 6;
                   memcpy(p, ITEM_key(it), it->nkey);
                   p += it->nkey;
+                  printf("p : %s\n", p);
                   p += make_ascii_get_suffix(p, it, return_cas, nbytes);
                   resp_add_iov(resp, resp->wbuf, p - resp->wbuf, 0);
 
@@ -3402,13 +3546,13 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
     char *key;
     size_t nkey;
     item *it;
-    token_t *key_token = &tokens[KEY_TOKEN];
+    token_t *key_token = &tokens[KEY_TOKEN]; //KEY_TOKEN 은 1이라서, key값을 얻을 수 있는 토큰 위치를 뜻하는듯
     int32_t exptime_int = 0;
     rel_time_t exptime = 0;
     bool fail_length = false;
     assert(c != NULL);
     mc_resp *resp = c->resp;
-
+    //printf("mpi_process_get_command1, stop, c->state : %d\n", c->state);
     if (should_touch) {
         // For get and touch commands, use first token as exptime
         if (!safe_strtol(tokens[1].value, &exptime_int)) {
@@ -3420,12 +3564,13 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
     }
 
     do {
-        while(key_token->length != 0) {
+        while(key_token->length != 0) { //key값이 있으면 계속 실행
+            //printf("mpi_process_get_command2, stop, c->state : %d\n", c->state);
             bool overflow; // not used here.
-            key = key_token->value;
-            nkey = key_token->length;
+            key = key_token->value; //실제 키값
+            nkey = key_token->length; //키의 길이
 
-            if (nkey > KEY_MAX_LENGTH) {
+            if (nkey > KEY_MAX_LENGTH) { //250 이상인 경우 실패
                 fail_length = true;
                 goto stop;
             }
@@ -3441,6 +3586,7 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                  *   "VALUE "
                  *   key
                  *   " " + flags + " " + data length + "\r\n" + data (with \r\n)
+                 * 응답을 다음과 같이 구성한다고 함.
                  */
 
                 {
@@ -3449,79 +3595,48 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                   int nbytes = it->nbytes;
                   char *p = resp->wbuf;
                   memcpy(p, "VALUE ", 6);
-                  p += 6;
-                  memcpy(p, ITEM_key(it), it->nkey);
+                  p += 6; //VALUE 앞으로 이동된 p 위치
+                  memcpy(p, ITEM_key(it), it->nkey); //key를 VALUE 다음에 붙임
                   p += it->nkey;
+                  //printf("%s\n", resp->wbuf);
                   p += make_ascii_get_suffix(p, it, return_cas, nbytes);
                   resp_add_iov(resp, resp->wbuf, p - resp->wbuf, tid);
-                 //printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d | resp->tosend : %d\n", tid, resp->chunked_data_iov, resp->tosend);
 
 #ifdef EXTSTORE
                   if (it->it_flags & ITEM_HDR) {
+                    //printf("??1\n");
                       if (storage_get_item(c, it, resp) != 0) {
                           pthread_mutex_lock(&c->thread->stats.mutex);
                           c->thread->stats.get_oom_extstore++;
                           pthread_mutex_unlock(&c->thread->stats.mutex);
 
                           item_remove(it);
+                          //printf("mpi_process_get_command2, stop, c->state : %d\n", c->state);
                           goto stop;
                       }
                   } else if ((it->it_flags & ITEM_CHUNKED) == 0) {
-#if MPI_DEBUG
-                    if(resp!=NULL && resp->tosend != 33 && resp->tosend != 35){
-                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-0, tid : %d | resp->chunked_data_iov : %d (%p) | resp->tosend : %d(%p)\n", tid, resp->chunked_data_iov, &resp->chunked_data_iov, resp->tosend, &resp->tosend);
-                    }
-#endif
+                        //printf("??2\n");
                       resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
-#if MPI_DEBUG
-                    if(resp!=NULL){
-                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->iovcnt : %d | it->nbytes : %d\n", tid, resp->iovcnt, it->nbytes);
-                        printf("memcached/proto_text.c :: mpi_process_get_command() 2-0-1, tid : %d | resp->chunked_data_iov : %d (%p)\n", tid, resp->chunked_data_iov,  &resp->chunked_data_iov);
-                    }
-#endif //여기 아래로는 안들어감
                   } else {
+                        //printf("??3\n");
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
 #else
                   if ((it->it_flags & ITEM_CHUNKED) == 0) {
+                    printf("??4\n");
                       resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
                   } else {
+                        printf("??5\n");
                       resp_add_chunked_iov(resp, it, it->nbytes);
                   }
-#endif
-                }
-#if MPI_DEBUG
-                if(resp!=NULL){
-                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->iovcnt : %d(%p)\n", tid, resp->iovcnt, &resp->iovcnt);
-                    printf("memcached/proto_text.c :: mpi_process_get_command() 2, tid : %d | resp->chunked_data_iov : %d(%p)\n", tid, resp->chunked_data_iov, &resp->chunked_data_iov);
-                }
-#endif
-                if (settings.verbose > 1) {
-                    int ii;
-#if ENABLE_FPRINT
-                    fprintf(stderr, ">%d sending key ", c->rank);
-#endif
-                    for (ii = 0; ii < it->nkey; ++ii) {
-#if ENABLE_FPRINT
-                        fprintf(stderr, "%c", key[ii]);
-#endif
-                    }
-#if ENABLE_FPRINT
-                    fprintf(stderr, "\n");
 #endif
                 }
                 /* item_get() has incremented it->refcount for us */
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 if (should_touch) {
-#if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 8\n");
-#endif
                     c->thread->stats.touch_cmds++;
                     c->thread->stats.slab_stats[ITEM_clsid(it)].touch_hits++;
                 } else {
-#if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 9\n");
-#endif
                     c->thread->stats.lru_hits[it->slabs_clsid]++;
                     c->thread->stats.get_cmds++;
                 }
@@ -3529,91 +3644,65 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
 #ifdef EXTSTORE
                 /* If ITEM_HDR, an io_wrap owns the reference. */
                 if ((it->it_flags & ITEM_HDR) == 0) {
+                    //printf("??\n");
                     resp->item = it;
                 }
 #else
+                printf("??6\n");
                 resp->item = it;
 #endif
             } else {
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command 10\n");
-#endif
+                //printf("mpi_process_get_command3, stop, c->state : %d\n", c->state);
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 if (should_touch) {
-#if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 11\n");
-#endif
                     c->thread->stats.touch_cmds++;
                     c->thread->stats.touch_misses++;
                 } else {
-#if ENABLE_PRINT
-                    printf("memcached/proto_text.c :: mpi_process_get_command 12\n");
-#endif
                     c->thread->stats.get_misses++;
                     c->thread->stats.get_cmds++;
                 }
                 MEMCACHED_COMMAND_GET(c->rank, key, nkey, -1, 0);
                 pthread_mutex_unlock(&c->thread->stats.mutex);
             }
-
+            //printf("mpi_process_get_command4, stop, c->state : %d\n", c->state);
             key_token++;
             if (key_token->length != 0) {
-#if ENABLE_PRINT
-                printf("memcached/proto_text.c :: mpi_process_get_command 13\n");
-#endif
-                if (!mpi_resp_start(c, tid)) {
+                if (!mpi_resp_start(c)) {
                     goto stop;
                 }
                 resp = c->resp;
-#if MPI_DEBUG
-                if(resp!=NULL){
-                    printf("memcached/proto_text.c :: mpi_process_get_command() 3, resp->chunked_data_iov : %d\n", resp->chunked_data_iov);
-                }
-#endif
             }
 
         }
-
+        //printf("mpi_process_get_command6, stop, c->state : %d\n", c->state);
         /*
          * If the command string hasn't been fully processed, get the next set
          * of tokens.
          */
         if (key_token->value != NULL) {
-#if ENABLE_PRINT
-            printf("memcached/proto_text.c :: mpi_process_get_command 14\n");
-#endif
+            //printf("mpi_process_get_command7, stop, c->state : %d\n", c->state);
+            //printf("key_token->value is not null\n");
             ntokens = tokenize_command(key_token->value, tokens, MAX_TOKENS);
             key_token = tokens;
-            if (!mpi_resp_start(c, tid)) {
+            if (!mpi_resp_start(c)) {
+                //printf("mpi_process_get_command8, stop, c->state : %d\n", c->state);
                 goto stop;
             }
             resp = c->resp;
         }
     } while(key_token->value != NULL);
 stop:
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_get_command 15\n");
-#endif
-#if ENABLE_FPRINT
-    if (settings.verbose > 1)
-        fprintf(stderr, ">%d END\n", c->rank);
-#endif
     /*
         If the loop was terminated because of out-of-memory, it is not
         reliable to add END\r\n to the buffer, because it might not end
         in \r\n. So we send SERVER_ERROR instead.
     */
+    //printf("mpi_process_get_command9, stop, c->state : %d\n", c->state);
     if (key_token->value != NULL) {
-#if ENABLE_PRINT
-        printf("memcached/proto_text.c :: mpi_process_get_command 16\n");
-#endif
         // Kill any stacked responses we had.
         mpi_conn_release_items(c);
         // Start a new response object for the error message.
-        if (!mpi_resp_start(c, tid)) {
-#if ENABLE_PRINT
-            printf("memcached/proto_text.c :: mpi_process_get_command 17\n");
-#endif
+        if (!mpi_resp_start(c)) {
             // severe out of memory error.
             //conn_set_state(c, conn_closing);
             c->state = conn_closing;
@@ -3625,18 +3714,12 @@ stop:
             out_of_memory(c, "SERVER_ERROR out of memory writing get response");
         }
     } else {
-#if ENABLE_PRINT
-        printf("memcached/proto_text.c :: mpi_process_get_command 18\n");
-#endif
+        //printf("mpi_process_get_command10, stop, c->state : %d\n", c->state);
         // Tag the end token onto the most recent response object.
         resp_add_iov(resp, "END\r\n", 5, tid);
         //conn_set_state(c, conn_new_cmd);
         c->state = conn_new_cmd;
-#if MPI_DEBUG
-        if(resp!=NULL){
-            printf("memcached/proto_text.c :: mpi_process_get_command() 4, tid : %d | resp->chunked_data_iov : %d\n", tid, resp->chunked_data_iov);
-        }
-#endif
+        //printf("mpi_process_get_command11, stop, c->state : %d\n", c->state);
     }
 }
 
@@ -3645,11 +3728,12 @@ stop:
 
 void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_complete_nread_ascii, settings.oldest_live : %d\n", settings.oldest_live);
+    printf("memcached/proto_text.c :: mpi_complete_nread_ascii\n");
 #endif
     assert(c != NULL);
 
     item *it = c->item; //item은 저장할 데이터들을 뜻한다.
+    //printf("memcached_server, nread_ascii - it : %d | c->item : %d\n", it, c->item);
     int comm = c->cmd; //이 C에 저장된 현재 연산 명령어를 comm으로 대입(cmd 에 set을 뜻하는 숫자가 들어있는듯)
     enum store_item_type ret;
     bool is_valid = false;
@@ -3659,7 +3743,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
     // c->thread->stats.slab_stats[ITEM_clsid(it)].set_cmds++;
     // pthread_mutex_unlock(&c->thread->stats.mutex);
 
-    if ((it->it_flags & ITEM_CHUNKED) == 0) {
+    if ((it->it_flags & ITEM_CHUNKED) == 0) { //여기 드르감
 #if ENABLE_PRINT
         printf("memcached/proto_text.c :: mpi_complete_nread_ascii 2\n");
 #endif
@@ -3705,7 +3789,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
         }
     }
 
-    if (!is_valid) {
+    if (!is_valid) { //여기도 안드르감
 #if ENABLE_PRINT
         printf("memcached/proto_text.c :: mpi_complete_nread_ascii 8\n");
 #endif
@@ -3721,8 +3805,9 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 #endif
       uint64_t cas = 0;
       c->thread->cur_sfd = c->rank; // cuddle sfd for logging.
-      //printf("memcached/- proto_text.c :: complete_nread_ascii(), store_item call\n");
+      //printf("memcached_server, complete_nread_ascii(), store_item call, it : %d\n", it);
       ret = store_item(it, comm, c->thread, &nbytes, &cas, c->cas ? c->cas : get_cas_id(), c->set_stale);
+      //printf("memcached_server, complete_nread_ascii(), store_item end, it : %d\n", it);
       c->cas = 0;
 
       if (c->mset_res) {
@@ -3742,7 +3827,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
               mpi_out_string(c, "EXISTS");
               break;
           case NOT_FOUND:
-            printf("memcached/proto_text.c :: mpi_complete_nread_ascii NOT FOUND\n");
+              //printf("memcached/proto_text.c :: mpi_complete_nread_ascii NOT FOUND\n");
               mpi_out_string(c, "NOT_FOUND");
               break;
           case NOT_STORED:
@@ -3759,6 +3844,7 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 #endif
     c->set_stale = false; /* force flag to be off just in case */
     c->mset_res = false;
+    //printf("memcached_server, complete_nread_ascii(), item_remove, it : %d | c->item : %d\n", it, c->item);
     item_remove(c->item);       /* release the c->item reference */
     c->item = 0;
 }
@@ -3766,10 +3852,6 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 
 
 void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) {
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_command_ascii(), settings.oldest_live : %d\n", settings.oldest_live);
-#endif
-
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
     int comm;
@@ -3777,21 +3859,12 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
     MEMCACHED_PROCESS_COMMAND_START(c->rank, c->rcurr, c->rbytes);
 
     assert(c != NULL);
-#if MPI_DEBUG
-    if(c->resp_head!=NULL){
-        printf("memcached/proto_text.c :: mpi_process_command_ascii() tid : %d | command : %s\n",tid, command);
-        printf("memcached/proto_text.c :: mpi_process_command_ascii() first, tid : %d | c->resp_head->chunked_data_iov : %d\n",tid, c->resp_head->chunked_data_iov);
-    }
-#endif
-    if (!mpi_resp_start(c, tid)) {
+
+    if (!mpi_resp_start(c)) {
         c->state = conn_closing;
         return;
     }
-#if MPI_DEBUG
-    if(c->resp_head!=NULL){
-        printf("memcached/proto_text.c :: mpi_process_command_ascii() second, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
-    }
-#endif
+
     c->thread->cur_sfd = c->rank; // cuddle sfd for logging.
     ntokens = tokenize_command(command, tokens, MAX_TOKENS);
     // All commands need a minimum of two tokens: cmd and NULL finalizer
@@ -3809,11 +3882,6 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
         if (strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) {
             //여기에 들어가서 process_get_command() 실행한다
             mpi_process_get_command(c, tokens, ntokens, false, false, tid);
-#if MPI_DEBUG
-            if(c->resp_head!=NULL){
-                printf("memcached/proto_text.c :: mpi_process_command_ascii(), ?? tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
-            }
-#endif
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0) {
             mpi_process_get_command(c, tokens, ntokens, true, false, tid);
         } else if (strcmp(tokens[COMMAND_TOKEN].value, "gat") == 0) {
@@ -3829,20 +3897,13 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
             mpi_process_update_command(c, tokens, ntokens, comm, false);
         }
     }
-    //else if (first == 'e'){
-    //     printf("memcached mpi_process_command_ascii first token is e\n");
-    //     if (strcmp(tokens[COMMAND_TOKEN].value, "end") == 0) {
-    //         c->state = conn_closing;
-    //         return;
-    //     }
-    // }
-
+    
     return;
 }
 
 static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *tokens, size_t ntokens)
 {
-    //잘못 답하는경우인듯
+    //이 함수는 메세지 안에 noreply가 존재할 경우, 응답하지 않는 것으로 ..
 #if ENABLE_PRINT
     printf("memcached/proto_text.c :: mpi_set_noreply_maybe(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
@@ -3865,7 +3926,7 @@ static inline bool mpi_set_noreply_maybe(struct mpi_conn_info *c, token_t *token
 
 void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_process_update_command, settings.oldest_live : %d\n", settings.oldest_live);
+    printf("memcached/proto_text.c :: mpi_process_update_command\n");
 #endif
     char *key;
     size_t nkey;
@@ -3914,16 +3975,16 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 #if ENABLE_PRINT
     printf("memcached/- proto_text.c :: mpi_process_update_command()-[5]\n");
 #endif
-    if (settings.detail_enabled) {
+    if (settings.detail_enabled) { //여기는 안들어감
 #if ENABLE_PRINT
         printf("memcached/- proto_text.c :: mpi_process_update_command()-[5-1]\n");
 #endif
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, flags, exptime, vlen);
+    it = item_alloc(key, nkey, flags, exptime, vlen); //do_item_alloc을 호출함
 
-    if (it == 0) {
+    if (it == 0) { //문제라고함
         enum store_item_type status;
         if (! item_size_ok(nkey, flags, vlen)) {
             mpi_out_string(c, "SERVER_ERROR object too large for cache");
@@ -3965,6 +4026,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     printf("memcached/- proto_text.c :: process_update_command()-[8]\n");
 #endif
     c->item = it; //여기부분에서 저장되는듯
+    //printf("memcached_server,update_command - it : %d | c->item : %d\n", it, c->item);
 #ifdef NEED_ALIGN
     if (it->it_flags & ITEM_CHUNKED) {
         c->ritem = ITEM_schunk(it);
@@ -3977,7 +4039,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
     c->rlbytes = it->nbytes;
     c->cmd = comm;
 #if ENABLE_PRINT
-    printf("memcached/- proto_text.c :: process_update_command()-[9]\n");
+    printf("memcached/- proto_text.c :: process_update_command() [9], c->rlbytes : %d, vlen : %d\n", c->rlbytes, vlen);
 #endif
     c->state = conn_nread;
 }
@@ -3986,7 +4048,7 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 
 int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
 #if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii(), settings.oldest_live : %d\n", settings.oldest_live);
+    printf("memcached/proto_text.c :: mpi_try_read_command_ascii()\n");
 #endif
     char *el, *cont;
 
@@ -3994,6 +4056,10 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
         return 0;
 
     el = memchr(c->rcurr, '\n', c->rbytes); //\n이라고 하는 바이트값을 찾는 함수
+    //memchr : 메모리 영역에서 특정 바이트값을 처음 찾는 함수
+    //그래서 받아온 메세지의 형식은
+    //'set/get' 'key' 'flag' 'exptime' 'bytes'\r\n 'values'\r\n 
+    //이라서, el은 처음 \n을 가리키기 시작
 
     if (!el) {
         if (c->rbytes > 2048) {
@@ -4026,24 +4092,34 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
         return 0;
     }
 
-    cont = el + 1;
-    if ((el - c->rcurr) > 1 && *(el - 1) == '\r') { //여기가 진짜 줄바꿈 구간이 맞는지 확인하는 부분 같다
-        el--;
-    }
-    *el = '\0';
+    cont = el + 1; //el은 \n values \r\n이었는데, cont는 values \r\n임.
 
+    //el은 \n 을 가리키는 중이라, c->rcurr보다 바이트수가 큰 상태. 그래서 뺄셈했을 때 1보다 당연히 크겠지?
+    //메세지 보내는 형식은 위에 써놨으므로, 후자 조건도 \r이 들어가는게 맞음
+    //printf("try_read_command_ascii2 :: c->rcurr : %s\n",c->rcurr);
+    if ((el - c->rcurr) > 1 && *(el - 1) == '\r') { //여기가 진짜 줄바꿈 구간이 맞는지 확인하는 부분 같다
+        el--; //'\r' 위치를 가리키게 됨
+    }
+    *el = '\0'; //그 뒤에 '\0'을 추가하는듯? 이걸 추가함으로써, value와 key 사이 \0이 들어가서 구별을 할 수 있음
+    //참고로, \0 붙는다해서 c->rcurr 자체가 key/value로 분리되진 않음. 곧 불릴 mpi_process_command_ascii 함수에는 요청했던 메세지 전체가 다 들어감
     assert(cont <= (c->rcurr + c->rbytes));
 
     c->last_cmd_time = current_time; //시간 업데이트하기
     if(c->resp_head!=NULL){
-        printf("memcached/proto_text.c :: mpi_try_read_command_ascii() prev, tid : %d | c->resp_head->chunked_data_iov : %d\n", tid, c->resp_head->chunked_data_iov);
+        //printf("memcached/proto_text.c :: mpi_try_read_command_ascii() prev, c->resp_head->chunked_data_iov : %d\n", c->resp_head->chunked_data_iov);
     }
-
     mpi_process_command_ascii(c, c->rcurr, tid);
 
+    //printf("c->rbytes1 : %d\n", c->rbytes);
     c->rbytes -= (cont - c->rcurr);
+    //printf("c->rbytes2 : %d\n", c->rbytes);
     c->rcurr = cont;
+
+    // printf("mpi_process_command_ascii, c->rbuf : %s\n",c->rbuf);
+    // printf("mpi_process_command_ascii, c->rsize : %d\n",c->rsize);
+    // printf("mpi_process_command_ascii, c->rcurr : %s\n",c->rcurr);
     assert(c->rcurr <= (c->rbuf + c->rsize));
+    //printf("memcached/proto_text.c :: c->state : %d\n", c->state);
     return 1;
 }
 #endif

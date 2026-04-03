@@ -76,6 +76,21 @@ static void slabs_preallocate (const unsigned int maxslabs);
 
 unsigned int slabs_clsid(const size_t size) {
     int res = POWER_SMALLEST;
+#if ENABLE_PRINT
+    /*
+    settings.item_size_max : 1048576
+    size : item size
+    res : 1
+    power_lagest : 39
+    slabclass[res].size : 96
+    */
+
+    printf("memcached/slabs.c :: slabs_clsid()[1], settings.item_size_max : %d\n", settings.item_size_max);
+    printf("memcached/slabs.c :: slabs_clsid()[1], size : %zu\n", size);
+    printf("memcached/slabs.c :: slabs_clsid()[1], res : %d\n", res);
+    printf("memcached/slabs.c :: slabs_clsid()[1], power_largest : %d\n", power_largest);
+    printf("memcached/slabs.c :: slabs_clsid()[1], slabclass[res].size : %d\n", slabclass[res].size);
+#endif
 
     if (size == 0 || size > settings.item_size_max)
         return 0;

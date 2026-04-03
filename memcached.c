@@ -211,8 +211,6 @@ static void mpi_conn_close(struct mpi_conn_info *c);
 
 static void mpi_drive_machine(struct mpi_conn_info *mpi_conn_arr, int tid);
 
-
-
 #endif
 
 
@@ -1205,7 +1203,7 @@ void resp_add_iov(mc_resp *resp, const void *buf, int len, int tid) {
     printf("memcached/memcached.c :: resp_add_iov()\n");
 #endif
 #if MPI_DEBUG
-    printf("memcached/memcached.c :: resp_add_iov(), [%d] len : %d\n", tid, len);
+    printf("memcached/memcached.c :: resp_add_iov(), buf : %s\n len : %d\n", buf, len);
 #endif
     assert(resp->iovcnt < MC_RESP_IOVCOUNT);
     int x = resp->iovcnt;
@@ -1309,16 +1307,20 @@ void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: resp_free(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
+    //printf("resp_free\n");
     mc_resp_bundle *b = resp->bundle;
 
     resp->free = true;
     b->refcount--;
     if (b->refcount == 0) {
+        //printf("resp_free1\n");
         if (b == th->open_bundle && b->next == 0) {
+                //printf("resp_free2\n");
             // This is the final bundle. Just hold and reuse to skip init loop
             assert(b->prev == 0);
             b->next_check = 0;
         } else {
+                //printf("resp_free3\n");
             // Assert that we're either in the list or at the head.
             assert((b->next || b->prev) || b == th->open_bundle);
 
@@ -1338,11 +1340,14 @@ void resp_free(LIBEVENT_THREAD *th, mc_resp *resp) {
             THR_STATS_UNLOCK(th);
         }
     } else {
+            //printf("resp_free4\n");
         mc_resp_bundle **head = &th->open_bundle;
         // NOTE: since we're not tracking tail, latest free ends up in head.
         if (b == th->open_bundle || (b->prev || b->next)) {
+                //printf("resp_free5\n");
             // If we're already linked, leave it in place to save CPU.
         } else {
+                //printf("resp_free6\n");
             // Non-zero refcount, need to link into the freelist.
             b->prev = 0;
             b->next = *head;
@@ -1495,7 +1500,6 @@ void out_string(conn *c, const char *str) {
         str = "SERVER_ERROR output line too long";
         len = strlen(str);
     }
-
     memcpy(resp->wbuf, str, len);
     memcpy(resp->wbuf + len, "\r\n", 2);
     resp_add_iov(resp, resp->wbuf, len + 2, 0);
@@ -1698,6 +1702,7 @@ static void complete_nread(conn *c) {
 /* Destination must always be chunked */
 /* This should be part of item.c */
 static int _store_item_copy_chunks(item *d_it, item *s_it, const int len) {
+//chunked item의 데이터 영역에, 다른 item의 데이터를 이어서 복사하는 함수
     item_chunk *dch = (item_chunk *) ITEM_schunk(d_it);
     /* Advance dch until we find free space */
     while (dch->size == dch->used) {
@@ -1809,7 +1814,9 @@ static int _store_item_copy_data(int comm, item *old_it, item *new_it, item *add
 enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const uint32_t hv, int *nbytes, uint64_t *cas, uint64_t cas_in, bool cas_stale) {
     //여기 자체가 데이터를 저장하기 위해서 찾는 공간
     char *key = ITEM_key(it);
-    //printf("memcached/memcached.c :: do_store_item()\n");
+#if ENABLE_PRINT
+    printf("memcached/memcached.c :: do_store_item(1)\n");
+#endif
     item *old_it = do_item_get(key, it->nkey, hv, t, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
 
@@ -1822,26 +1829,28 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
     enum cas_result cas_res = CAS_NONE;
 
     bool do_store = false;
-    if (old_it != NULL) {
+    if (old_it != NULL) { //UPDATE 시 들어감
         // Most of the CAS work requires something to compare to.
         uint64_t it_cas = ITEM_get_cas(it);
         uint64_t old_cas = ITEM_get_cas(old_it);
-        if (it_cas == 0) {
+        if (it_cas == 0) { //UPDATE할 때 들어감
             cas_res = CAS_NONE;
-        } else if (it_cas == old_cas) {
+        } else if (it_cas == old_cas) { //안 들어감
             cas_res = CAS_MATCH;
-        } else if (cas_stale && it_cas < old_cas) {
+        } else if (cas_stale && it_cas < old_cas) { //안 들어감
             cas_res = CAS_STALE;
-        } else {
+        } else { //안 들어감
             cas_res = CAS_BADVAL;
         }
 
         switch (comm) {
-            case NREAD_ADD:
+            case NREAD_ADD: //안 들어감
                 /* add only adds a nonexistent item, but promote to head of LRU */
+                //본래 기존 key 가 없을 때만 넣는 명령인데, 현재는 있으므로 기존 item을 최근에 사용한 것처럼 update하고, LRU의 헤드로 이동시키는 것 같다.
                 do_item_update(old_it);
                 break;
-            case NREAD_CAS:
+            case NREAD_CAS: //안 들어감
+                //얘는 CAS 저장하는 방식. 그래서 아까 계산한 CAS의 상태에 따라 아래의 로직대로 실행됨.
                 if (cas_res == CAS_MATCH) {
                     // cas validates
                     // it and old_it may belong to different classes.
@@ -1850,7 +1859,8 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
                     t->stats.slab_stats[ITEM_clsid(old_it)].cas_hits++;
                     pthread_mutex_unlock(&t->stats.mutex);
                     do_store = true;
-                } else if (cas_res == CAS_STALE) {
+                } else if (cas_res == CAS_STALE) { //안 들어감
+                    //STALE 모드일 경우에는 저장을 허용함.
                     // if we're allowed to set a stale value, CAS must be lower than
                     // the current item's CAS.
                     // This replaces the value, but should preserve TTL, and stale
@@ -1865,7 +1875,7 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
                     t->stats.slab_stats[ITEM_clsid(old_it)].cas_hits++;
                     pthread_mutex_unlock(&t->stats.mutex);
                     do_store = true;
-                } else {
+                } else { //안 들어감
                     // NONE or BADVAL are the same for CAS cmd
                     pthread_mutex_lock(&t->stats.mutex);
                     t->stats.slab_stats[ITEM_clsid(old_it)].cas_badval++;
@@ -1882,13 +1892,13 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
             case NREAD_APPEND:
             case NREAD_PREPEND:
             case NREAD_APPENDVIV:
-            case NREAD_PREPENDVIV:
-                if (cas_res != CAS_NONE && cas_res != CAS_MATCH) {
+            case NREAD_PREPENDVIV: //이 부분은 기존의 값 뒤에 새 값을 붙이는 것.
+                if (cas_res != CAS_NONE && cas_res != CAS_MATCH) { //CAS가 이상하면 걍 요청 거절하기
                     stored = EXISTS;
                     break;
                 }
 #ifdef EXTSTORE
-                if ((old_it->it_flags & ITEM_HDR) != 0) {
+                if ((old_it->it_flags & ITEM_HDR) != 0) { // 안 들어감
                     /* block append/prepend from working with extstore-d items.
                      * leave response code to NOT_STORED default */
                     break;
@@ -1897,17 +1907,19 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
                 /* we have it and old_it here - alloc memory to hold both */
                 FLAGS_CONV(old_it, flags);
                 new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
+                //기존값+새 값을 담을 item new_it 를 생성
 
                 // OOM trying to copy.
                 if (new_it == NULL)
                     break;
                 /* copy data from it and old_it to new_it */
+                //실제 데이터를 합치는 과정
                 if (_store_item_copy_data(comm, old_it, new_it, it) == -1) {
-                    // failed data copy
+                    //실패할 경우 걍 break
                     break;
-                } else {
-                    // refcount of new_it is 1 here. will end up 2 after link.
-                    // it's original ref is managed outside of this function
+                } else {//성공할 경우에는 old+new 를 합친 new_it를 it에 대입하고, 저장 여부를 참으로 변경
+                    // 지금 이 시점에서 new_it의 refcount는 1임.
+                    //link가 끝나면 2가 됨. 그리고 그 원래의 refcount 1이었던 참조는 이 함수 바깥부분에서 관리된다고 함.
                     it = new_it;
                     do_store = true;
                     // Upstream final object size for meta
@@ -1917,23 +1929,23 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
                 }
                 break;
             case NREAD_REPLACE:
-            case NREAD_SET:
+            case NREAD_SET: //UPDATE 시 들어감
                 do_store = true;
                 break;
         }
 
-        if (do_store) {
+        if (do_store) { //UPDATE시 들어감
             STORAGE_delete(t->storage, old_it);
             item_replace(old_it, it, hv, cas_in);
             stored = STORED;
         }
 
         do_item_remove(old_it);         /* release our reference */
-        if (new_it != NULL) {
+        if (new_it != NULL) { //안 들어감
             // append/prepend end up with an extra reference for new_it.
             do_item_remove(new_it);
         }
-    } else {
+    } else { ////데이터 삽입할 경우 들어감
         /* No pre-existing item to replace or compare to. */
         if (ITEM_get_cas(it) != 0) {
             /* Asked for a CAS match but nothing to compare it to. */
@@ -1961,23 +1973,20 @@ enum store_item_type do_store_item(item *it, int comm, LIBEVENT_THREAD *t, const
                 break;
         }
 
-        if (do_store) { //[yedam] 여기서 데이터 저장했다고 말해주는듯
-#if ENABLE_PRINT
-            printf("memcached/memcached.c :: do_store_item() - call do_item_link, it->time : %d | settings.oldest_live : %d\n", it->time, settings.oldest_live);
-#endif
+        if (do_store) { //데이터 삽입할 경우 들어감
+            //printf("memcached_server, do_store_item, it : %d\n", it);
             do_item_link(it, hv, cas_in);
             stored = STORED;
         }
     }
 
-    if (stored == STORED && cas != NULL) {
+    if (stored == STORED && cas != NULL) { // ㅇ들어감
         *cas = ITEM_get_cas(it);
     }
     //yedam
     // LOGGER_LOG(t->l, LOG_MUTATIONS, LOGGER_ITEM_STORE, NULL,
     //         stored, comm, ITEM_key(it), it->nkey, it->nbytes, it->exptime,
     //         ITEM_clsid(it), t->cur_sfd);
-
     return stored;
 }
 
@@ -3502,6 +3511,7 @@ static void drive_machine(conn *c) {
 #endif
             /* Only process nreqs at a time to avoid starving other
                connections */
+            printf("memcached/conn_new_cmd\n");
             --nreqs;
             if (nreqs >= 0) {
 #if ENABLE_PRINT
@@ -5383,7 +5393,6 @@ void mpi_conn_release_items(struct mpi_conn_info *c) {
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_conn_release_items ()\n");
 #endif
-
     assert(c != NULL);
 
     if (c->item) {
@@ -5432,12 +5441,9 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
     server_size = size/2;
 #endif
 
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_conn_init(), server_size : %d\n", server_size);
-#endif
     for(int i=0; i<server_size; i++){
         #if MEMCACHED_MODE
-            mpi_conn_arr[i].rank = i+server_size;
+            mpi_conn_arr[i].rank = 0;
         #endif
         #if PS_MODE
             mpi_conn_arr[i].rank = i+server_size+1;
@@ -5445,26 +5451,13 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
         mpi_conn_arr[i].state = conn_listening;
         mpi_conn_arr[i].rsize = READ_BUFFER_SIZE; //16kb
         mpi_conn_arr[i].rbuf = NULL;
-        #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_conn_init()2\n");
-        #endif
         mpi_conn_arr[i].rcurr = mpi_conn_arr[i].rbuf;
         mpi_conn_arr[i].rbytes = 0;
-        #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_conn_init()3-1\n");
-            printf("mpi_conn_arr[%d], sizeof(THREAD) : %d\n", i, sizeof(LIBEVENT_THREAD));
-        #endif
         mpi_conn_arr[i].thread = calloc(1, sizeof(LIBEVENT_THREAD));
-        #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_conn_init()3-2\n");
-        #endif
         mpi_conn_arr[i].item = NULL;
         mpi_conn_arr[i].resps_suspended = 0;
         mpi_conn_arr[i].resp=0;
         mpi_conn_arr[i].resp_head=0;
-        #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_conn_init()4\n");
-        #endif
         mpi_conn_arr[i].cmd = -1;
         mpi_conn_arr[i].rbuf_malloced = false;
         mpi_conn_arr[i].item_malloced = false;
@@ -5472,14 +5465,8 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
         mpi_conn_arr[i].mset_res = false;
         mpi_conn_arr[i].close_after_write = false;
         mpi_conn_arr[i].last_cmd_time = current_time;
-        #if ENABLE_PRINT
-            printf("memcached/memcached.c :: mpi_conn_init()5\n");
-        #endif
+        mpi_conn_arr[i].dpu_rank=0;
     }
-    #if ENABLE_PRINT
-        printf("memcached/memcached.c :: mpi_conn_init()6\n");
-    #endif
-
 }
 
 static void mpi_conn_cleanup(struct mpi_conn_info *c) {
@@ -5526,7 +5513,6 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 #endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
-    int rank;
     struct timespec recv_start, recv_end;
 
     if (c->rcurr != c->rbuf) {
@@ -5542,6 +5528,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         #if MPI_RECV_BREAKDOWN
             clock_gettime(CLOCK_REALTIME, &recv_start);
         #endif
+        //printf("memcached/mpi_try_read_network, MPI_Probe\n");
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         int count;
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
@@ -5549,13 +5536,20 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        //printf("count : %d\n", res);
+        //printf("[server] recv [%d] \"%s\" \n",mpi_recv_status.MPI_SOURCE, c->rbuf);
         #if MPI_RECV_BREAKDOWN
             clock_gettime(CLOCK_REALTIME, &recv_end);
             MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
         #endif
-
         c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
+
+#if DPU_CACHE
+        if(c->rank == 1){
+            c->rank = 2;
+            c->dpu_rank=1;
+        }
+#endif
+        //memcpy(c->raw_rbuf, c->rbuf, res);
 
         if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
             completed_clients++;
@@ -5585,6 +5579,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         if(res > 0){
             pthread_mutex_lock(&c->thread->stats.mutex);
             c->thread->stats.bytes_read += res;
+            //c->raw_rbuf_size += res;
             pthread_mutex_unlock(&c->thread->stats.mutex);
             gotdata = READ_DATA_RECEIVED;
             c->rbytes += res;
@@ -5617,17 +5612,18 @@ mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
 #endif
     mc_resp *next = resp->next;
 
-    if (resp->item) {
+    if (resp->item) { //여기 안들어가는듯?
+        //printf("mpi_resp_finish2\n");
         // TODO: cache hash value in resp obj?
         item_remove(resp->item);
         resp->item = NULL;
     }
 
-    if (resp->write_and_free) {
+    if (resp->write_and_free) { //여기도 안들어가는듯
         free(resp->write_and_free);
     }
 
-    if (resp->io_pending) {
+    if (resp->io_pending) { //여기도 안들어감
         io_pending_t *io = resp->io_pending;
         // If we had a pending IO, tell it to internally clean up then return
         // the main object back to our thread cache.
@@ -5636,11 +5632,11 @@ mc_resp* mpi_resp_finish(struct mpi_conn_info *c, mc_resp *resp) {
         resp->io_pending = NULL;
     }
 
-    if (c->resp_head == resp) { //여기
+    if (c->resp_head == resp) { //여기 들어감
         c->resp_head = next;
     }
 
-    if (c->resp == resp) { //여기
+    if (c->resp == resp) { //여기 들어감
         c->resp = NULL;
     }
 
@@ -5656,9 +5652,11 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
     // responses from the list of pending writes.
     mc_resp *resp = c->resp_head;
 
-    while (resp) {
+    while (resp) { //여기 들어감
         int x;
+        //printf("mpi_transmit_post1\n");
         if (resp->skip) {
+            //printf("mpi_transmit_post2\n");
             resp = mpi_resp_finish(c, resp);
             continue;
         }
@@ -5666,18 +5664,22 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
         // fastpath check. all small responses should cut here.
         if (res >= resp->tosend) { //여기 들어감
             res -= resp->tosend;
+            //printf("mpi_transmit_post3\n");
             resp = mpi_resp_finish(c, resp);
             continue;
         }
 
         // it's fine to re-check iov's that were zeroed out before.
         for (x = 0; x < resp->iovcnt; x++) {
+            //printf("mpi_transmit_post4, resp->iovcnt : %d\n", resp->iovcnt);
             struct iovec *iov = &resp->iov[x];
             if (res >= iov->iov_len) {
+                //printf("mpi_transmit_post4\n");
                 resp->tosend -= iov->iov_len;
                 res -= iov->iov_len;
                 iov->iov_len = 0;
             } else {
+                //printf("mpi_transmit_post5\n");
                 // Dumb special case for chunked items. Currently tracking
                 // where to inject the chunked item via iov_base.
                 // Extra not-great since chunked items can't be the first
@@ -5694,8 +5696,10 @@ static void mpi_transmit_post(struct mpi_conn_info *c, ssize_t res) {
 
         // are we done with this response object?
         if (resp->tosend == 0) {
+            //printf("mpi_transmit_post6\n");
             resp = mpi_resp_finish(c, resp);
         } else {
+            //printf("mpi_transmit_post7\n");
             // Jammed up here. This is the new head.
             break;
         }
@@ -5707,17 +5711,20 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
 #if ENABLE_PRINT
     printf("memcached/memcached.c :: mpi_transmit_pre()\n");
 #endif
-    mc_resp *resp = c->resp_head;
-
+    mc_resp *resp = c->resp_head; //여기에 resp->wbuf가 그대로 담겨있는 것 같다
+    //printf("mpi_trasnsmit_pre, resp->wbuf : %s\n", resp->wbuf); //여기서부터 resp->wbuf가 비어있는데 왜인지 모르겟슴
     while (resp && iovused + resp->iovcnt < IOV_MAX-1) {
-        if (resp->skip) {
+       //printf("mpi_trasnsmit_pre1, iovused : %d | resp->iovcnt : %d | IOV_MAX-1 : %d\n", iovused, resp->iovcnt, IOV_MAX-1);
+        if (resp->skip) { //안들어감
+            //printf("mpi_trasnsmit_pre2\n");
             // Don't actually unchain the resp obj here since it's singly-linked.
             // Just let the post function handle it linearly.
             resp = resp->next;
             continue;
         }
-
-        if (resp->chunked_data_iov) {
+        //printf("mpi_trasnsmit_pre debugging\n");
+        if (resp->chunked_data_iov) { //안들어감
+            //printf("mpi_trasnsmit_pre3\n");
             // Handle chunked items specially.
             // They spend much more time in send so we can be a bit wasteful
             // in rebuilding iovecs for them.
@@ -5725,8 +5732,10 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
             item_chunk *ch = (item_chunk *)ITEM_schunk((item *)resp->iov[resp->chunked_data_iov].iov_base);
             int x;
             for (x = 0; x < resp->iovcnt; x++) {
+                //printf("mpi_trasnsmit_pre4, resp->iovcnt : %d\n", resp->iovcnt);
                 // This iov is tracking how far we've copied so far.
                 if (x == resp->chunked_data_iov) {
+                    //printf("mpi_trasnsmit_pre5\n");
                     int done = resp->chunked_total - resp->iov[x].iov_len;
                     // Start from the len to allow binprot to cut the \r\n
                     int todo = resp->iov[x].iov_len;
@@ -5753,18 +5762,27 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
                         ch = ch->next;
                     }
                 } else {
+                    //printf("mpi_trasnsmit_pre6\n");
                     iovs[iovused].iov_base = resp->iov[x].iov_base;
                     iovs[iovused].iov_len = resp->iov[x].iov_len;
                     iovused++;
                 }
                 if (iovused >= IOV_MAX-1){
+                    //printf("mpi_trasnsmit_pre7\n");
                     break;
                 }
             }
         } else {
+            // printf("mpi_trasnsmit_pre8\n");
+            // for(int i=0; i<4; i++){
+            //     printf("iov_base str = %s\n", (char *)resp->iov[i].iov_base);
+            //     printf("iov_len = %zu\n", resp->iov[i].iov_len);
+            // }
+            //printf("mpi_trasnsmit_pre7 debugging 2\n");
             memcpy(&iovs[iovused], resp->iov, sizeof(struct iovec)*resp->iovcnt);
             iovused += resp->iovcnt;
         }
+        //printf("mpi_trasnsmit_pre9\n");
         // done looking at first response, walk down the chain.
         resp = resp->next;
     }
@@ -5780,7 +5798,7 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     printf("memcached/memcached.c :: mpi_sendmsg(), settings.oldest_live : %d\n", settings.oldest_live);
 #endif
     /*여기는 실제 transmit 함수 부분. 내가 그냥 conn_mwrite/conn_write 에서 바로 메세지를 보낼 수 있게 통합함.*/
-
+    //printf("mpi_sendmsg1\n");
     struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
     struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
     int iovused = 0;
@@ -5790,11 +5808,12 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     // init the msg.
     memset(&msg, 0, sizeof(struct msghdr));
     msg.msg_iov = iovs;
-
+    //printf("mpi_sendmsg2\n");
     iovused = mpi_transmit_pre(c, iovs, iovused, tid);
 
 
-    if (iovused == 0) {
+    if (iovused == 0) { //여기 안들어감. iovused는 지금 처리해야하는 메세지 개수인데, 우리는 1개 들어오면 1개 처리하는 방식으로 일단 진행중이라서..
+        //printf("mpi_sendmsg3\n");
         // printf("memcached/memcached.c :: transmit, _transmit_pre 이후 iovused : %d\n", iovused);
         // // Avoid the syscall if we're only handling a noreply.
         // // Return the response object.
@@ -5803,9 +5822,10 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     }
 
     char mpi_send_buf[1024];
+    
     ssize_t offset=0;
-
     for (int i = 0; i < iovused; i++) {
+        //printf("mpi_sendmsg4, iovused : %d\n", iovused);
         struct iovec *iov = &msg.msg_iov[i];
         memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
         offset +=iov->iov_len;
@@ -5815,28 +5835,43 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_start);
     #endif
+    //printf("memcached server, [%d]에게 전송 메세지 : %s\n", c->rank, mpi_send_buf);
+    //printf("[server] send [%d] \"%s\" \n", c-rank, mpi_send_buf);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
+#if DPU_CACHE
+    if(c->dpu_rank!=0){
+        char dpu_send_buf[1024];
+        ssize_t dpu_offset=0;
+        memset(dpu_send_buf, 0, 1024);
+        build_req_buffer(mpi_send_buf, dpu_send_buf, offset, &dpu_offset);
+        //printf("memcached server, [%d]에게 전송 메세지 : \"%s\" (%d) \n", c->dpu_rank, dpu_send_buf, dpu_offset);
+        MPI_Send(dpu_send_buf, dpu_offset, MPI_CHAR, c->dpu_rank, SEND_TAG, MPI_COMM_WORLD);
+    }
+    c->dpu_rank=0;
+#endif
     #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_end);
         MPI_send_time+=((send_end.tv_sec-send_start.tv_sec)*BILLION)+send_end.tv_nsec-send_start.tv_nsec;
     #endif
 
-    if (offset >= 0) {
+    if (offset >= 0) { //여기 들어감
 
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += offset;
         pthread_mutex_unlock(&c->thread->stats.mutex);
-
+        //printf("mpi_sendmsg5\n");
         // Decrement any partial IOV's and complete any finished resp's.
         mpi_transmit_post(c, offset);
 
         if (c->resp_head) {
+            //printf("mpi_sendmsg6-1\n");
             return TRANSMIT_INCOMPLETE;
         } else {
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &end);
                 send_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
+            //printf("mpi_sendmsg6-2\n");
             return TRANSMIT_COMPLETE;
         }
     }
@@ -5862,6 +5897,7 @@ static bool mpi_rbuf_alloc(struct mpi_conn_info *c) {
 #endif
     if (c->rbuf == NULL) {
         c->rbuf = do_cache_alloc(c->thread->rbuf_cache);
+        //c->raw_rbuf = malloc(READ_BUFFER_SIZE);
         if (!c->rbuf) {
             THR_STATS_LOCK(c->thread);
             c->thread->stats.read_buf_oom++;
@@ -5883,6 +5919,7 @@ static void mpi_rbuf_release(struct mpi_conn_info *c) {
     if (c->rbuf != NULL && c->rbytes == 0) {
         if (c->rbuf_malloced) {
             free(c->rbuf);
+            //free(c->raw_rbuf);
             c->rbuf_malloced = false;
         } else {
             do_cache_free(c->thread->rbuf_cache, c->rbuf); //여기서 오류가 생기는 것 같은데..
@@ -5949,6 +5986,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
     while(!stop){
         switch(client->state){
         case conn_listening:
+            //printf("memcached::conn_listening()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -5980,6 +6018,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #endif
             break;
         case conn_read:
+            //printf("memcached::conn_read()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -6009,30 +6048,42 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             break;
             
         case conn_parse_cmd:
+            //printf("memcached::conn_parse_cmd(), state : %d\n", client->state);
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
             client->noreply = false;
+            
             if (mpi_try_read_command_ascii(client, tid) == 0) {
                 /* we need more data! */
+                //printf("memcached::conn_parse_cmd()2, state : %d\n", client->state);
                 if (client->resp_head) {
+                    //printf("memcached::conn_parse_cmd()3, state : %d\n", client->state);
                     // Buffered responses waiting, flush in the meantime.
                     client->state = conn_mwrite;
                 } else {
                     client->state = conn_waiting;
                 }
             }
+            //printf("memcached::conn_parse_cmd()4, state : %d\n", client->state);
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &end);
                 other_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
+            //printf("memcached::conn_parse_cmd(), state : %d\n", client->state);
             break;
             
         case conn_nread:
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()\n");
+#endif
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
             if (client->rlbytes == 0) {
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()2\n");
+#endif
                 mpi_complete_nread_ascii(client);
                 #if BREAKDOWN
                     clock_gettime(CLOCK_REALTIME, &end);
@@ -6043,6 +6094,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
 
             /* Check if rbytes < 0, to prevent crash */
             if (client->rlbytes < 0) {
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()3\n");
+#endif
                 if (settings.verbose) {
                     fprintf(stderr, "Invalid rlbytes to read: len %d\n", client->rlbytes);
                 }
@@ -6055,9 +6109,18 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             }
 
             if (client->item_malloced || ((((item *)client->item)->it_flags & ITEM_CHUNKED) == 0) ) {
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()4\n");
+#endif
                 /* first check if we have leftovers in the conn_read buffer */
-                if (client->rbytes > 0) {
+                if (client->rbytes > 0) { //tocopy, rbytes, rlbytes 모두 동일한 크기를 가짐 
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()5\n");
+#endif
                     int tocopy = client->rbytes > client->rlbytes ? client->rlbytes : client->rbytes;
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()5-1, tocopy : %d | client->rbytes : %d | client->rlbytes : %d\n", tocopy, client->rbytes, client->rlbytes);
+#endif
                     memmove(client->ritem, client->rcurr, tocopy);
                     client->ritem += tocopy;
                     client->rlbytes -= tocopy;
@@ -6073,8 +6136,14 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 }
                 //printf("conn_nread :: mpu_try_read_network()\n");
                 /*  now try reading from the socket */
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()6\n");
+#endif
                 res = mpi_try_read_network(client);
                 if (res > 0) {
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()7\n");
+#endif
                     pthread_mutex_lock(&client->thread->stats.mutex);
                     client->thread->stats.bytes_read += res;
                     pthread_mutex_unlock(&client->thread->stats.mutex);
@@ -6090,6 +6159,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     break;
                 }
             } else {
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()8\n");
+#endif
                 res = mpi_read_into_chunked_item(client);
                 if (res > 0){
                     #if BREAKDOWN
@@ -6152,8 +6224,12 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 clock_gettime(CLOCK_REALTIME, &end);
                 other_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
+#if ENABLE_PRINT
+            printf("memcached::conn_nread()9\n");
+#endif
             break;
         case conn_swallow:
+            //printf("memcached::swallow()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -6223,9 +6299,11 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #endif
             break;
         case conn_new_cmd:
+            //printf("memcached::conn_new_cmd()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
+            //printf("memcached/conn_new_cmd, nreqs : %d\n", nreqs);
             --nreqs;
             if (nreqs >= 0) {
                 //printf("1\n");
@@ -6251,6 +6329,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             break;
 
         case conn_waiting:
+            //printf("memcached::conn_waiting()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -6264,6 +6343,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             break;
         case conn_write:
         case conn_mwrite:
+            //printf("memcached::conn_mwrite()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -6289,7 +6369,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             switch (mpi_sendmsg(client, tid)) { //요기 들어감
             case TRANSMIT_COMPLETE:
                 if (client->state == conn_mwrite) { //요기 들어감
-                    if(client->item)
+                    //if(client->item)
                     // Free up IO wraps and any half-uploaded items.
                     mpi_conn_release_items(client);
                     client->state = conn_new_cmd;
@@ -6302,6 +6382,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     client->state = conn_closing;
 
                 }
+                //printf("memcached/conn_mwrite, nreqs : %d\n", nreqs);
                 nreqs++; //이걸 주석처리하지 않으면 settings.oldest_live 값이 계속 올라가는 문제가 발생함. 일단 주석처리했는데 이유를 더 상세하게 알아야할듯
                 break;
 
@@ -6319,6 +6400,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #endif
             break;
         case conn_closing:
+            //printf("memcached::conn_closing()\n");
             #if BREAKDOWN
                 clock_gettime(CLOCK_REALTIME, &start);
             #endif
@@ -6403,43 +6485,42 @@ void mpi_out_string(struct mpi_conn_info *c, const char *str) {
         str = "SERVER_ERROR output line too long";
         len = strlen(str);
     }
-
     memcpy(resp->wbuf, str, strlen(str));
     memcpy(resp->wbuf + strlen(str), "\r\n", 2);
+    //printf("out_string(), resp->wbuf : %s\n", resp->wbuf);
     resp_add_iov(resp, resp->wbuf, strlen(str) + 2, 6);
     c->state = conn_new_cmd;
     return;
 }
 
+// 현재 스레드가 관리하는 responce 객체 풀에서, 비어있는 mc_resp 하나를 꺼내어 초기화하는 함수
+// mc_resp : resp 객체 하나
+// mc_resp_bundle : resp 객체들을 묶어놓은 객체
+// mc_resp_bundle에 있는 r[]이 실제 responce 객체 배열임. 그리고 거기 있는 free 여부가 지금 비어있는지를 뜻하는거
+// refcount는 현재 이 bundle 안에서 사용중인 mc_resp 개수를 뜻함.
+// open_bundle은 스레드가 가지고 있는 번들 중, 빈 mc_resp가 남아있어서 할당 가능한 bundle의 머리를 뜻함
 static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: mpi_resp_allocate(), settings.oldest_live : %d\n", settings.oldest_live);
-#endif
-
     LIBEVENT_THREAD *th = c->thread;
-    //printf("memcached/memcached.c :: mpi_resp_allocate()2, tid : [%d], th : %p\n", c->rank, th);
     mc_resp *resp = NULL;
     mc_resp_bundle *b = th->open_bundle;
 
-    if (b != NULL) {
-        for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) {
-
+    if (b != NULL) { //여기 들어감
+        for (int i = 0; i < MAX_RESP_PER_BUNDLE; i++) { //bundle 안의 r[]을 순회
             // loop around starting from the most likely to be free
-            int x = (i + b->next_check) % MAX_RESP_PER_BUNDLE;
-            //printf("memcached/memcached.c :: mpi_resp_allocate()3, tid : [%d], i : %d, x : %d\n", c->rank, i, x);
-            if (b->r[x].free) {
+            int x = (i + b->next_check) % MAX_RESP_PER_BUNDLE; //이건 이전에 마지막으로 찾은 위치 다음부터 순회하겠다는 의미
+            if (b->r[x].free) { //free인 공간이 남아있는 경우 그 칸 주소를 resp에 저장하고, bundle의 다음 resp에 x+1을 연결
                 resp = &b->r[x];
                 b->next_check = x+1;
                 break;
             }
         }
 
-        if (resp != NULL) {
+        if (resp != NULL) { //여기 들어감
             b->refcount++;
-            memset(resp, 0, sizeof(*resp));
+            memset(resp, 0, sizeof(*resp)); //초기화 진행하기
             resp->free = false; // redundant, for clarity.
             resp->bundle = b;
-            if (b->refcount == MAX_RESP_PER_BUNDLE) {
+            if (b->refcount == MAX_RESP_PER_BUNDLE) { //근데 여긴 안들어감
                 assert(b->prev == NULL);
                 // We only allocate off the head. Assign new head.
                 th->open_bundle = b->next;
@@ -6451,7 +6532,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             }
         }
     }
-    if (resp == NULL) {
+    if (resp == NULL) { //여기 안들어감
         assert(th->open_bundle == NULL);
         b = do_cache_alloc(th->rbuf_cache);
         if (b) {
@@ -6476,6 +6557,7 @@ static mc_resp* mpi_resp_allocate(struct mpi_conn_info *c) {
             return NULL;
         }
     }
+    //여기로 빠져나옴
     resp->tosend=0;
     return resp;    
 }
@@ -8239,7 +8321,7 @@ int main (int argc, char **argv) {
     /* enter the event loop */
 
     pthread_t ttid = pthread_self(); 
-    //sleep(50);
+    //sleep(5);
     // char ch;
     // printf("getchar : ");
     // ch=getchar();

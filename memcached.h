@@ -21,6 +21,7 @@
 #include <grp.h>
 #include <signal.h>
 #include <sys/syscall.h> //yedam
+#include <stdbool.h>
 /* need this to get IOV_MAX on some platforms. */
 #ifndef __need_IOV_MAX
 #define __need_IOV_MAX
@@ -59,8 +60,8 @@
 
 
 
-#define ENABLE_SOCKET_FUNCTIONS 0
-#define ENABLE_MPI_FUNCTIONS 1
+#define ENABLE_SOCKET_FUNCTIONS 1
+#define ENABLE_MPI_FUNCTIONS 0
 #define ENABLE_PRINT 0
 #define ENABLE_FPRINT 0
 #define MPI_DEBUG 0
@@ -794,8 +795,11 @@ typedef struct _mc_resp {
     mc_resp_bundle *bundle; // ptr back to bundle
     struct _mc_resp *next; // choo choo.
     int wbytes; // bytes to write out of wbuf: might be able to nuke this.
+                // wbuf 안에서 실제로 써야 할 바이트 수
     int tosend; // total bytes to send for this response
+                // 응답 전체에서 보내야할 바이트 수
     void *write_and_free; /** free this memory after finishing writing */
+                            // 다 쓰고 나면 free 해야하는 메모리
     io_pending_t *io_pending; /* pending IO descriptor for this response */
 
     item *item; /* item associated with this response object, with reference held */
@@ -945,6 +949,7 @@ struct conn {
 
 struct mpi_conn_info{
     int  rank;      /** MPI Rank */
+    int  dpu_rank;
     enum conn_states  state;
     enum bin_substates substate;
     bool close_after_write; /** write 한 이후에 연결 종료할 지? */
@@ -954,10 +959,11 @@ struct mpi_conn_info{
     bool mset_res; /** uses mset format for return code */
 
     char   *rbuf;   /** buffer to read commands into */
+    //char   *raw_rbuf; //set을 클라이언트로부터 받았을 때, 이후에 DPU에게 해당 데이터를 줘야할 수 있음. 이 메세지를 그대로 전달하기 위해 원본 메세지 버퍼를 둠
     char   *rcurr;  /** 아직 파싱되지 않은 위치, but if we parsed some already, this is where we stopped */
     int    rsize;   /** rbuf 의 총 할당 크기, total allocated size of rbuf */
     int    rbytes;  /** rcur 부터 시작해서 우리가 파싱하지 못한 위치까지의 데이터 길이, how much data, starting from rcur, do we have unparsed */
-
+    //int    raw_rbuf_size; //raw_rbuf의 메세지 크기. 이후에 MPI_Send()를 할 때 필요하다
     char   *ritem;  /** value 저장하는 곳, when we read in an item's value, it goes here */
     int    rlbytes;
 
@@ -1007,7 +1013,7 @@ struct mpi_conn_thread{
 };
 
 
-
+void build_req_buffer(char* mpi_send_buf, char* dpu_send_buf, ssize_t offset, ssize_t *dpu_offset);
 
 
 

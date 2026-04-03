@@ -97,12 +97,17 @@ static LIBEVENT_THREAD *threads;
 static int init_count = 0;
 static pthread_mutex_t init_lock;
 static pthread_cond_t init_cond;
+static pthread_mutex_t cq_lock;
+static pthread_cond_t cq_cond;
 
 static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item);
 static void notify_worker_fd(LIBEVENT_THREAD *t, int sfd, enum conn_queue_item_modes mode);
 static CQ_ITEM *cqi_new(CQ *cq);
 static void cq_push(CQ *cq, CQ_ITEM *item);
-
+static int cq_empty(CQ *cq);
+#ifdef ENABLE_MPI_FUNCTIONS
+static void mpi_thread_libevent_process(void *arg);
+#endif
 static void thread_libevent_process(evutil_socket_t fd, short which, void *arg);
 static void thread_libevent_ionotify(evutil_socket_t fd, short which, void *arg);
 
@@ -135,11 +140,14 @@ void item_unlock(uint32_t hv) {
 }
 
 static void wait_for_thread_registration(int nthreads) {
-    //pthread_t tid = pthread_self();
+    pthread_t tid = pthread_self();
     //printf("[%lu] thread.c::wait_for_thread_registration\n", tid);  
+    // pthread_mutex_lock(&cq_lock);
+    // pthread_cond_signal(&cq_cond);
     while (init_count < nthreads) {
         pthread_cond_wait(&init_cond, &init_lock);
     }
+    //pthread_mutex_unlock(&cq_lock);
 }
 
 static void register_thread_initialized(void) {
@@ -206,7 +214,7 @@ void pause_threads(enum pause_thread_types type) {
         notify_worker_fd(&threads[i], 0, queue_pause);
     }
     //printf("[%lu] thread.c :: pause_threads5\n",tid);
-    //wait_for_thread_registration(settings.num_threads);
+    wait_for_thread_registration(settings.num_threads);
     //printf("[%lu] thread.c :: pause_threads6\n",tid);
     pthread_mutex_unlock(&init_lock);
     //printf("[%lu] thread.c :: pause_threads7\n",tid);
@@ -218,7 +226,7 @@ void pause_threads(enum pause_thread_types type) {
 // loop in order to call this function.
 void stop_threads(void) {
     int i;
-
+    pthread_t tid = pthread_self();
     // assoc can call pause_threads(), so we have to stop it first.
     stop_assoc_maintenance_thread();
     if (settings.verbose > 0)
@@ -231,6 +239,7 @@ void stop_threads(void) {
     pthread_mutex_lock(&init_lock);
     init_count = 0;
     for (i = 0; i < settings.num_threads; i++) {
+        //printf("[%lu] memcached/thread.c :: stop_threads\n", tid);
         notify_worker_fd(&threads[i], 0, queue_stop);
     }
     wait_for_thread_registration(settings.num_threads);
@@ -284,6 +293,8 @@ void stop_threads(void) {
  * Initializes a connection queue.
  */
 static void cq_init(CQ *cq) {
+    pthread_t tid = pthread_self();
+    //printf("[%lu] thread.c :: cq_init()\n", tid);
     pthread_mutex_init(&cq->lock, NULL);
     STAILQ_INIT(&cq->head);
     cq->cache = cache_create("cq", sizeof(CQ_ITEM), sizeof(char *));
@@ -299,6 +310,8 @@ static void cq_init(CQ *cq) {
  * Returns the item, or NULL if no item is available
  */
 static CQ_ITEM *cq_pop(CQ *cq) {
+    pthread_t tid = pthread_self();
+    //printf("[%lu] thread.c :: cq_pop()\n", tid);
     CQ_ITEM *item;
 
     pthread_mutex_lock(&cq->lock);
@@ -315,20 +328,32 @@ static CQ_ITEM *cq_pop(CQ *cq) {
  * Adds an item to a connection queue.
  */
 static void cq_push(CQ *cq, CQ_ITEM *item) {
-    // pthread_t tid = pthread_self();
-    // printf("[%lu] thread.c :: cq_push()\n", tid);
+    pthread_t tid = pthread_self();
+    //printf("[%lu] thread.c :: cq_push()\n", tid);
     pthread_mutex_lock(&cq->lock);
     STAILQ_INSERT_TAIL(&cq->head, item, i_next);
     pthread_mutex_unlock(&cq->lock);
+}
+
+//내가 만든거
+static int cq_empty(CQ *cq) {
+    int ret=0;
+    pthread_mutex_lock(&cq->lock);
+    if(STAILQ_EMPTY(&cq->head)){
+        ret = 1;
+    }else{
+        ret = 0;
+    }
+    pthread_mutex_unlock(&cq->lock);
+    return ret;
 }
 
 /*
  * Returns a fresh connection queue item.
  */
 static CQ_ITEM *cqi_new(CQ *cq) {
-#if ENABLE_PRINT
-    printf("memcached/thread.c :: cqi_new()\n");
-#endif
+    pthread_t tid = pthread_self();
+    //printf("[%lu] thread.c :: cqi_new()\n", tid);
     CQ_ITEM *item = cache_alloc(cq->cache);
 
     if (item == NULL) {
@@ -346,6 +371,8 @@ static void cqi_free(CQ *cq, CQ_ITEM *item) {
     cache_free(cq->cache, item);
 }
 
+
+
 // TODO: Skip notify if queue wasn't empty?
 // - Requires cq_push() returning a "was empty" flag
 // - Requires event handling loop to pop the entire queue and work from that
@@ -354,8 +381,8 @@ static void cqi_free(CQ *cq, CQ_ITEM *item) {
 // much that will transfer from a synthetic benchmark.
 static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
 
-    // pthread_t tid = pthread_self();
-    // printf("[%lu] memcached/thread.c :: notify_worker()\n", tid);
+    pthread_t tid = pthread_self();
+    //printf("[%lu] memcached/thread.c :: notify_worker()\n", tid);
     cq_push(t->ev_queue, item);
 #ifdef HAVE_EVENTFD
     uint64_t u = 1;
@@ -381,6 +408,8 @@ static void notify_worker(LIBEVENT_THREAD *t, CQ_ITEM *item) {
 // NOTE: An external func that takes a conn *c might be cleaner overall.
 static void notify_worker_fd(LIBEVENT_THREAD *t, int sfd, enum conn_queue_item_modes mode) {
     CQ_ITEM *item;
+    pthread_t tid = pthread_self();
+    //printf("[%lu] memcached/thread.c::notify_worker_fd()\n", tid);
     while ( (item = cqi_new(t->ev_queue)) == NULL ) {
         // NOTE: most callers of this function cannot fail, but mallocs in
         // theory can fail. Small mallocs essentially never do without also
@@ -391,10 +420,9 @@ static void notify_worker_fd(LIBEVENT_THREAD *t, int sfd, enum conn_queue_item_m
         // area I want to keep more lean. If this CQ business becomes a more
         // generic queue I'll reconsider.
     }
-    // pthread_t tid = pthread_self();
-    // printf("[%lu] memcached/thread.c::notify_worker_fd()\n", tid);
     item->mode = mode;
     item->sfd = sfd;
+    
     notify_worker(t, item);
 }
 
@@ -429,7 +457,7 @@ void accept_new_conns(const bool do_accept) {
 /****************************** LIBEVENT THREADS *****************************/
 
 static void setup_thread_notify(LIBEVENT_THREAD *me, struct thread_notify *tn, void(*cb)(int, short, void *)) {
-    //pthread_t tid = pthread_self();
+    pthread_t tid = pthread_self();
     //printf("[%lu] thread.c :: setup_thread_notify()\n", tid);
 #ifdef HAVE_EVENTFD
     event_set(&tn->notify_event, tn->notify_event_fd,
@@ -450,8 +478,7 @@ static void setup_thread_notify(LIBEVENT_THREAD *me, struct thread_notify *tn, v
  * Set up a thread's information.
  */
 static void setup_thread(LIBEVENT_THREAD *me) {
-    //pthread_t tid = pthread_self();
-    //printf("[%lu] thread.c setup_thread \n", tid);
+    pthread_t cq_tid;
 #if defined(LIBEVENT_VERSION_NUMBER) && LIBEVENT_VERSION_NUMBER >= 0x02000101
     //여기 실행
     //이벤트 루프(event base)를 초기화하는 코드
@@ -479,6 +506,7 @@ static void setup_thread(LIBEVENT_THREAD *me) {
     //printf("[%lu] thread.c setup_thread()\n", tid);
     setup_thread_notify(me, &me->n, thread_libevent_process);
     setup_thread_notify(me, &me->ion, thread_libevent_ionotify);
+    //pthread_create(&cq_tid, NULL, mpi_thread_libevent_process, me);
 #endif
     pthread_mutex_init(&me->ion_lock, NULL);
     STAILQ_INIT(&me->ion_head);
@@ -570,7 +598,7 @@ static void *worker_libevent(void *arg) {
     /* Any per-thread setup can happen here; memcached_thread_init() will block until
      * all threads have finished initializing.
      */
-#if ENABLE_SOCKET_FUNCTIONS
+//#if ENABLE_SOCKET_FUNCTIONS
     me->l = logger_create();
     me->lru_bump_buf = item_lru_bump_buf_create();
     if (me->l == NULL || me->lru_bump_buf == NULL) {
@@ -582,18 +610,19 @@ static void *worker_libevent(void *arg) {
     }
 
     if(me->base!=NULL){
-        printf("me->base is not null\n");
+        //printf("me->base is not null\n");
+        ;
     }else{
         printf("me->base is null\n");
     }
 
     register_thread_initialized();
     while (!event_base_got_exit(me->base)) {
-        printf("is not event_base_got_exit()\n");
+        //printf("is not event_base_got_exit()\n");
         event_base_loop(me->base, EVLOOP_ONCE);
         // Run IO queues after the event loop to catch things like
         // re-submissions from proxy callbacks.
-        printf("is not event_base_got_exit()2\n");
+        //printf("is not event_base_got_exit()2\n");
         thread_io_queue_submit(me);
 #ifdef PROXY
         if (me->proxy_ctx) {
@@ -602,11 +631,11 @@ static void *worker_libevent(void *arg) {
 #endif
     }
     // same mechanism used to watch for all threads exiting.
-    printf("is not event_base_got_exit()3\n");
+    //printf("is not event_base_got_exit()3\n");
     register_thread_initialized();
 
     event_base_free(me->base);
-#endif
+//#endif
     //printf("[%lu] thread.c::worker_libevent에서 register_thread_initialized 호출2\n", tid);
     register_thread_initialized();
     return NULL;
@@ -653,6 +682,49 @@ static void thread_libevent_ionotify(evutil_socket_t fd, short which, void *arg)
         conn_io_queue_return(io);
     }
 }
+#ifdef ENABLE_MPI_FUNCTIONS
+static void mpi_thread_libevent_process(void *arg) {
+    pthread_t *tid = pthread_self();
+    //printf("[%lu] mpi_thread_libevent_process\n", tid);
+    LIBEVENT_THREAD *me = arg;
+    CQ_ITEM *item;
+    CQ* cq = me->ev_queue;
+    while(true){
+        pthread_mutex_lock(&cq_lock);
+
+        while ((item = STAILQ_FIRST(&cq->head)) == NULL) {
+            printf("[%lu] mpi_thread_libevent_process1\n", tid);
+            pthread_cond_wait(&cq_cond, &cq_lock);
+        }
+        printf("[%lu] mpi_thread_libevent_process2\n", tid);
+        pthread_mutex_unlock(&cq_lock);
+
+        item = cq_pop(cq);
+
+        switch (item->mode) {
+            case queue_new_conn:
+                break;
+            case queue_pause:
+                /* we were told to pause and report in */
+                printf("[%lu] mpi_thread_libevent_process, register_thread_initialized 호출\n", tid);
+                register_thread_initialized();
+                break;
+            case queue_timeout:
+                break;
+            case queue_redispatch:
+                break;
+            case queue_stop:
+                break;
+        }
+
+        //cqi_free(me->ev_queue, item);
+    }
+
+}
+#endif
+
+
+
 
 /*
  * Processes an incoming "connection event" item. This is called when
@@ -661,7 +733,7 @@ static void thread_libevent_ionotify(evutil_socket_t fd, short which, void *arg)
 static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) {
     LIBEVENT_THREAD *me = arg;
     pthread_t tid = pthread_self();
-    printf("[%lu] memcached/thread.c :: thread_libevent_process 1\n", tid);
+    //printf("[%lu] memcached/thread.c :: thread_libevent_process 1\n", tid);
     CQ_ITEM *item;
     conn *c;
     uint64_t ev_count = 0; // max number of events to loop through this run.
@@ -684,7 +756,7 @@ static void thread_libevent_process(evutil_socket_t fd, short which, void *arg) 
         return;
     }
 #endif
-printf("[%lu] memcached/thread.c :: thread_libevent_process 2\n", tid);
+//printf("[%lu] memcached/thread.c :: thread_libevent_process 2\n", tid);
     for (int x = 0; x < ev_count; x++) {
         item = cq_pop(me->ev_queue);
         if (item == NULL) {
@@ -693,41 +765,41 @@ printf("[%lu] memcached/thread.c :: thread_libevent_process 2\n", tid);
 
         switch (item->mode) {
             case queue_new_conn:
-                printf("[%lu] memcached/thread.c :: thread_libevent_process 3\n", tid);
-                c = conn_new(item->sfd, item->init_state, item->event_flags,
-                                   item->read_buffer_size, item->transport,
-                                   me->base, item->ssl, item->conntag, item->bproto);
+//                 printf("[%lu] memcached/thread.c :: thread_libevent_process 3\n", tid);
+//                 c = conn_new(item->sfd, item->init_state, item->event_flags,
+//                                    item->read_buffer_size, item->transport,
+//                                    me->base, item->ssl, item->conntag, item->bproto);
 
-                printf("[%lu] memcached/thread.c :: thread_libevent_process 3-1\n", tid);
-                if (c == NULL) {
-                    if (IS_UDP(item->transport)) {
-                        fprintf(stderr, "Can't listen for events on UDP socket\n");
-                        exit(1);
-                    } else {
-                        if (settings.verbose > 0) {
-                            fprintf(stderr, "Can't listen for events on fd %d\n",
-                                item->sfd);
-                        }
-                        if (item->ssl) {
-                            ssl_conn_close(item->ssl);
-                            item->ssl = NULL;
-                        }
-                        close(item->sfd);
-                    }
-                } else {
-                    printf("[%lu] memcached/thread.c :: thread_libevent_process 4\n", tid);
-                    c->thread = me;
-#ifdef TLS
-                    if (settings.ssl_enabled && c->ssl != NULL) {
-                        assert(c->thread && c->thread->ssl_wbuf);
-                        c->ssl_wbuf = c->thread->ssl_wbuf;
-                    }
-#endif
-                }
+//                 printf("[%lu] memcached/thread.c :: thread_libevent_process 3-1\n", tid);
+//                 if (c == NULL) {
+//                     if (IS_UDP(item->transport)) {
+//                         fprintf(stderr, "Can't listen for events on UDP socket\n");
+//                         exit(1);
+//                     } else {
+//                         if (settings.verbose > 0) {
+//                             fprintf(stderr, "Can't listen for events on fd %d\n",
+//                                 item->sfd);
+//                         }
+//                         if (item->ssl) {
+//                             ssl_conn_close(item->ssl);  
+//                             item->ssl = NULL;
+//                         }
+//                         close(item->sfd);
+//                     }
+//                 } else {
+//                     printf("[%lu] memcached/thread.c :: thread_libevent_process 4\n", tid);
+//                     c->thread = me;
+// #ifdef TLS
+//                     if (settings.ssl_enabled && c->ssl != NULL) {
+//                         assert(c->thread && c->thread->ssl_wbuf);
+//                         c->ssl_wbuf = c->thread->ssl_wbuf;
+//                     }
+// #endif
+//                 }
                 break;
             case queue_pause:
                 /* we were told to pause and report in */
-                printf("thread_libevent_process\n");
+                //printf("thread_libevent_process\n");
                 register_thread_initialized();
                 break;
             case queue_timeout:
@@ -751,7 +823,7 @@ printf("[%lu] memcached/thread.c :: thread_libevent_process 2\n", tid);
 
         cqi_free(me->ev_queue, item);
     }
-printf("[%lu] memcached/thread.c :: thread_libevent_process 5\n", tid);
+//printf("[%lu] memcached/thread.c :: thread_libevent_process 5\n", tid);
 }
 
 // Interface is slightly different on various platforms.
@@ -1333,7 +1405,8 @@ void mpi_dispatch_conn_new(struct mpi_conn_info *c, enum conn_states init_state,
 
     //MEMCACHED_CONN_DISPATCH(sfd, (int64_t)thread->thread_id);
     c->thread = &threads[0];
-    //printf("memcached/thread.c :: mpi_dispatch_conn_new() - &threads[%d] : %p\n", c->rank-1, &threads[c->rank-1]);
+    pthread_t tid = pthread_self();
+    //printf("[%lu] memcached/thread.c :: mpi_dispatch_conn_new()\n", tid);
     notify_worker(thread, item);
 
 #if ENABLE_PRINT

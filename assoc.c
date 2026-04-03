@@ -26,13 +26,13 @@
 #include <pthread.h>
 
 int data_num=0;
+int hv_arr[10]={0}; //for debugging
+int hv_arr_count=0;
 
 extern unsigned long hash_time[4];
 extern volatile int temp_rank;
 extern int old_hash_table_num;
 extern int primary_hash_table_num;
-
-
 
 static pthread_cond_t maintenance_cond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t maintenance_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -102,7 +102,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //key : 넣은 key 값 ( ex : key_0, key_1, ..)
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : 해시 버킷
-    //printf("assoc_find :: key : %s | hv : %u\n", key, hv);
+    //printf("memcached server, assoc_find :: key : %s | hv : %u\n", key, hv);
     struct timespec hash_op_start, hash_op_end;
 #if HASH_BREAKDOWN
     clock_gettime(CLOCK_REALTIME, &hash_op_start);
@@ -168,7 +168,7 @@ static void assoc_expand(void) {
         printf("memcached::assoc.c :: assoc_expand()\n");
 #endif
     pthread_t tid = pthread_self();
-    printf("[%lu] assoc_expand\n",tid);
+    //printf("[%lu] assoc_expand\n",tid);
     old_hashtable = primary_hashtable;
 
     primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
@@ -209,14 +209,15 @@ int assoc_insert(item *it, const uint32_t hv) {
 #endif
     uint64_t oldbucket;
 
-    //assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined */
-
+    //assert(assoc_find(ITEM_key(it), it->nkey) == 0);  /* shouldn't have duplicately named things defined *
+    
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
         it->h_next = old_hashtable[oldbucket];
         old_hashtable[oldbucket] = it;
     } else {
         it->h_next = primary_hashtable[hv & hashmask(hashpower)];
         primary_hashtable[hv & hashmask(hashpower)] = it;
+        //printf("memcached_server, assoc_insert(), it : %d\n", it);
     }
 
     MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey);

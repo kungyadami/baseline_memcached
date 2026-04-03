@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <poll.h>
 
+
+
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);
@@ -283,7 +285,7 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     printf("memcached/item.c :: do_item_alloc(), settings.oldest_live : %d\n", settings.oldest_live);
     printf("\t key : %s\n", key); //key_0
     printf("\t nkey : %zu\n", nkey);
-    printf("\t nbytes : %d\n", nbytes);
+    printf("\t nbytes : %d\n", nbytes); //여기서의 nbytes는 value값의 bytes
     printf("\t exptime : %u\n", exptime);
 #endif
     uint8_t nsuffix;
@@ -293,15 +295,18 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     if (nbytes < 2)
         return 0;
 
-    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
+    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix); //헤더 크기 포함한 데이터 전체 크기 계산
 #if ENABLE_PRINT
-    printf("memcached/item.c :: do_item_alloc() - [2], settings.oldest_live : %d\n", settings.oldest_live);
+    printf("memcached/item.c :: do_item_alloc() [2]\n");
 #endif
-    if (settings.use_cas) {
+    if (settings.use_cas) { //use_cas까지 사용하는 경우라면, 이 데이터까지 모두 item에 합해서 크기 계산
         ntotal += sizeof(uint64_t);
     }
 
-    unsigned int id = slabs_clsid(ntotal);
+    unsigned int id = slabs_clsid(ntotal); //메모리를 slab class 단위로 나누어 관리하는데, item 데이터 크기에 가장 잘 맞는 클래스를 반환하는듯 
+#if ENABLE_PRINT
+    printf("memcached/item.c :: do_item_alloc() [3], id : %d\n", id);
+#endif
     unsigned int hdr_id = 0;
     if (id == 0)
         return 0;
@@ -309,8 +314,7 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
     /* This is a large item. Allocate a header object now, lazily allocate
      *  chunks while reading the upload.
      */
-    //printf("memcached::item.c :: do_item_alloc() ntotal : %d | settings.slab_chunk_size_max : %d | id : %d\n", ntotal, settings.slab_chunk_size_max, id);
-    if (ntotal > settings.slab_chunk_size_max) {
+    if (ntotal > settings.slab_chunk_size_max) { //아이템이 너무 커서 한 slab chunk 안에 못 들어가는 경우
         //안 들어감
         /* We still link this item into the LRU for the larger slab class, but
          * we're pulling a header from an entirely different slab class. The
@@ -332,50 +336,50 @@ item *do_item_alloc(const char *key, const size_t nkey, const client_flags_t fla
         /* setting ITEM_CHUNKED is fine here because we aren't LINKED yet. */
         if (it != NULL)
             it->it_flags |= ITEM_CHUNKED;
-    } else {
+    } else { // 아이템이 크지 않을 경우, 바로 이 함수를 통해 할당
         it = do_item_alloc_pull(ntotal, id);
     }
 
-    if (it == NULL) {
+    if (it == NULL) { //할당 실패할 경우
         pthread_mutex_lock(&lru_locks[id]);
         itemstats[id].outofmemory++;
         pthread_mutex_unlock(&lru_locks[id]);
         return NULL;
     }
-
+    //printf("memcached::it->it_flags : %d \n", it->it_flags);
     assert(it->it_flags == 0 || it->it_flags == ITEM_CHUNKED);
     //assert(it != heads[id]);
 
     /* Refcount is seeded to 1 by slabs_alloc() */
-    it->next = it->prev = 0;
+    it->next = it->prev = 0; //LRU Linked list 연결 포인터 초기화
 
     /* Items are initially loaded into the HOT_LRU. This is '0' but I want at
      * least a note here. Compiler (hopefully?) optimizes this out.
      */
-    if (settings.temp_lru &&
-            exptime - current_time <= settings.temporary_ttl) {
-        id |= TEMP_LRU;
+    if (settings.temp_lru && exptime - current_time <= settings.temporary_ttl) { //어느 LRU 구역에 넣을지?
+        id |= TEMP_LRU; //임시 아이템
     } else if (settings.lru_segmented) {
-        id |= HOT_LRU;
+        id |= HOT_LRU; //최근 아이템
     } else {
         /* There is only COLD in compat-mode */
-        id |= COLD_LRU;
+        id |= COLD_LRU; //별로 접근 많이 안되는 아이템
     }
     it->slabs_clsid = id;
 
-    DEBUG_REFCNT(it, '*');
+    DEBUG_REFCNT(it, '*'); //아이템 필드 채우는 부분인듯
     it->it_flags |= settings.use_cas ? ITEM_CAS : 0;
     it->it_flags |= nsuffix != 0 ? ITEM_CFLAGS : 0;
     it->nkey = nkey;
     it->nbytes = nbytes;
     memcpy(ITEM_key(it), key, nkey);
     it->exptime = exptime;
-    if (nsuffix > 0) {
+
+    if (nsuffix > 0) { //flag가 있으면 suffix 영역에 복사
         memcpy(ITEM_suffix(it), &flags, sizeof(flags));
     }
 
     /* Initialize internal chunk. */
-    if (it->it_flags & ITEM_CHUNKED) {
+    if (it->it_flags & ITEM_CHUNKED) { //큰 아이템인 경우 청크 단위로 나눠서 관리해야해서, 이 경우에는 아래처럼 초기화
         item_chunk *chunk = (item_chunk *) ITEM_schunk(it);
 
         chunk->next = 0;
@@ -495,6 +499,7 @@ static void item_link_q_warm(item *it) {
     pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
 }
 
+//item을 LRU 큐에서 떼어내는 함수
 static void do_item_unlink_q(item *it) {
     item **head, **tail;
     head = &heads[it->slabs_clsid];
@@ -554,6 +559,7 @@ int do_item_link(item *it, const uint32_t hv, const uint64_t cas) {
     refcount_incr(it);
     item_stats_sizes_add(it);
 
+
     return 1;
 }
 
@@ -602,19 +608,9 @@ void do_item_remove(item *it) {
     MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
     assert(it->refcount > 0);
-#if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_remove()2, it->refcount : %d | settings.oldest_live : %d\n", it->refcount, settings.oldest_live);
-#endif
-
     if (refcount_decr(it) == 0) {
-        #if ENABLE_PRINT
-            printf("memcached/items.c :: do_item_remove()2-1, settings.oldest_live : %d\n", settings.oldest_live);
-        #endif
         item_free(it);
     }
-#if ENABLE_PRINT
-    printf("memcached/items.c :: do_item_remove()3, settings.oldest_live : %d\n",settings.oldest_live);
-#endif
 }
 
 /* Bump the last accessed time, or relink if we're in compat mode */
@@ -670,7 +666,7 @@ int do_item_replace(item *it, item *new_it, const uint32_t hv, const uint64_t ca
 }
 
 void item_flush_expired(void) {
-    printf("memcached/item.c :: item_flush_expired(), oldest_live 호출 \n");
+    //printf("memcached/item.c :: item_flush_expired(), oldest_live 호출 \n");
     int i;
     item *iter, *next;
     if (settings.oldest_live == 0)
@@ -702,7 +698,7 @@ void item_flush_expired(void) {
                 if ((iter->it_flags & ITEM_SLABBED) == 0) {
                     STORAGE_delete(ext_storage, iter);
                     // nolock version because we hold the LRU lock already.
-                    printf("memcached::item.c :: item_flush_expired(), do_item_unlink_nolock 호출 \n");
+                    //printf("memcached::item.c :: item_flush_expired(), do_item_unlink_nolock 호출 \n");
                     do_item_unlink_nolock(iter, hash(ITEM_key(iter), iter->nkey));
                 }
                 item_trylock_unlock(hold_lock);
@@ -1129,6 +1125,9 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv, LIBEVEN
 // Requires lock held for item.
 // Split out of do_item_get() to allow mget functions to look through header
 // data before losing state modified via the bump function.
+// 아이템에 대한 lock을 잡고 있어야함.
+// mget 함수들이 bump 함수 때문에 바뀌기 전 상태를 잃어버리기 때문에, header 데이터를 먼저 볼 수 있도록
+// 이 로직을 do_item_get()에서 분리했다고 함.
 void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
 #if ENABLE_PRINT
     printf("memcached/items.c :: do_item_bump()\n");
@@ -1138,6 +1137,10 @@ void do_item_bump(LIBEVENT_THREAD *t, item *it, const uint32_t hv) {
      * ACTIVE, but only needs a single hit to maintain activity
      * afterward.
      * FETCHED tells if an item has ever been active.
+     * fetch 할 때에만 hit marker를 갱신한다.
+     * 어떤 item이 ACTIVE로 간주되려면, 전체적으로 두 번 hit 되어야함.
+     * 하지만 한 번 ACTIVE가 된 이후에는 한번만 hit 되어도 활동 상태를 유지할 수 있다고 함.
+     * FETCHED는 그 item이 이전에 한번이라도 ACTIVE 상태였는지를 나타냄
      */
     if (settings.lru_segmented) {
         if ((it->it_flags & ITEM_ACTIVE) == 0) {
