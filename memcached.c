@@ -53,12 +53,14 @@ volatile int resp_num;
 int completed_clients;
 int mpi_client_size;
 unsigned long hash_time[16];
-unsigned long all_time;
-struct timespec all_start, all_end;
+unsigned long all_time;             //전체 시간 잴 때
+struct timespec all_start, all_end; //전체 시간 잴 때
 volatile int temp_rank=0;
 unsigned long MPI_recv_time, MPI_send_time;
 int old_hash_table_num=0;
 int primary_hash_table_num=0;
+int success = 0;
+int get_req_num = 0;
 
 #ifdef HAVE_GETOPT_LONG
 #include <getopt.h> //프로그램 실행시 인자 처리 잘해주는 라이브러리
@@ -154,13 +156,11 @@ enum transmit_result {
 // #endif
 
 
-#if BREAKDOWN
     unsigned long send_brkdwn; //mpi_send/recv 할 때 성능
     unsigned long recv_brkdwn;
     unsigned long other_brkdwn; //그 외 각종 저장/토크나이즈 연산 성능
     struct timespec start, end;
     
-#endif
 
 // #define DATA_NUM 10000
 // int nreqs;
@@ -5443,7 +5443,7 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
 
     for(int i=0; i<server_size; i++){
         #if MEMCACHED_MODE
-            mpi_conn_arr[i].rank = 0;
+            mpi_conn_arr[i].rank = 1;
         #endif
         #if PS_MODE
             mpi_conn_arr[i].rank = i+server_size+1;
@@ -5465,7 +5465,7 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
         mpi_conn_arr[i].mset_res = false;
         mpi_conn_arr[i].close_after_write = false;
         mpi_conn_arr[i].last_cmd_time = current_time;
-        mpi_conn_arr[i].dpu_rank=0;
+        mpi_conn_arr[i].dpu_rank=1;
     }
 }
 
@@ -5532,6 +5532,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         int count;
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        //printf("?\n");
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
@@ -5542,11 +5543,14 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
         #endif
         c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
-
+        //printf("[server] DPU rank : %d\n",c->dpu_rank);
 #if DPU_CACHE
-        if(c->rank == 1){
+        if(c->rank == 0){
+            //printf("여기 들어가는지 확인 필요\n");
             c->rank = 2;
-            c->dpu_rank=1;
+            c->dpu_rank=0;
+        }else{
+            c->dpu_rank = 1;
         }
 #endif
         //memcpy(c->raw_rbuf, c->rbuf, res);
@@ -5554,8 +5558,10 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
             completed_clients++;
             if(completed_clients == mpi_client_size){
-                // clock_gettime(CLOCK_REALTIME, &all_end);
-                // all_time+=((all_end.tv_sec-all_start.tv_sec)*BILLION)+all_end.tv_nsec-all_start.tv_nsec;
+#if ALL_TIME
+                clock_gettime(CLOCK_REALTIME, &all_end);
+                all_time+=((all_end.tv_sec-all_start.tv_sec)*BILLION)+all_end.tv_nsec-all_start.tv_nsec;
+#endif
                 return READ_ERROR;
             }
         }
@@ -5832,22 +5838,32 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     }
 
     assert (c != NULL);
-    #if MPI_SEND_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &send_start);
-    #endif
+    // bool measure_send = (get_req_num > 100000);
+    // if (measure_send) {
+    //     clock_gettime(CLOCK_REALTIME, &send_start);
+    // }
     //printf("memcached server, [%d]에게 전송 메세지 : %s\n", c->rank, mpi_send_buf);
-    //printf("[server] send [%d] \"%s\" \n", c-rank, mpi_send_buf);
+    // printf("[server] send [%d] \"%s\" \n", c-rank, mpi_send_buf);
+    // printf("서버에서 저장중인 dpu의 현재 rank : %d\n", c->dpu_rank);
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
+    get_req_num++;
+    if(get_req_num > 100000){
+        success++;
+    }
+    // if (measure_send) {
+    //     clock_gettime(CLOCK_REALTIME, &send_end);
+    //     send_brkdwn+=((send_end.tv_sec-send_start.tv_sec)*BILLION)+send_end.tv_nsec-send_start.tv_nsec;
+    // }
 #if DPU_CACHE
-    if(c->dpu_rank!=0){
+    if(c->dpu_rank==0){
         char dpu_send_buf[1024];
         ssize_t dpu_offset=0;
         memset(dpu_send_buf, 0, 1024);
         build_req_buffer(mpi_send_buf, dpu_send_buf, offset, &dpu_offset);
-        //printf("memcached server, [%d]에게 전송 메세지 : \"%s\" (%d) \n", c->dpu_rank, dpu_send_buf, dpu_offset);
+        //printf("memcached server, DPU[%d]에게 전송 메세지 : \"%s\" (%d) \n", c->dpu_rank, dpu_send_buf, dpu_offset);
         MPI_Send(dpu_send_buf, dpu_offset, MPI_CHAR, c->dpu_rank, SEND_TAG, MPI_COMM_WORLD);
     }
-    c->dpu_rank=0;
+    c->dpu_rank=1;
 #endif
     #if MPI_SEND_BREAKDOWN
         clock_gettime(CLOCK_REALTIME, &send_end);
@@ -5982,7 +5998,7 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
     const char *str;
     int nreqs = settings.reqs_per_event;
     pthread_t ttid = pthread_self();   // 현재 스레드 ID 얻기
-
+    //printf("server debugging2\n");
     while(!stop){
         switch(client->state){
         case conn_listening:
@@ -6411,14 +6427,12 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 clock_gettime(CLOCK_REALTIME, &end);
                 other_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
-            #if BREAKDOWN
-                printf("===========BREAKDOWN RESULT===========\n");
+
+                printf("=========== SERVER BREAKDOWN RESULT===========\n");
                 printf("[send breakdown] : %lu sec\n", send_brkdwn);
                 printf("[recv breakdown] : %lu sec\n", recv_brkdwn);
                 printf("[other breakdown] : %lu sec\n", other_brkdwn);
-                printf("sum : %lu sec\n", send_brkdwn+recv_brkdwn+other_brkdwn);
 
-            #endif
             #if MPI_RECV_BREAKDOWN
                 printf("[MPI_Recv breakdown] : %lu sec\n", MPI_recv_time);
             #endif
@@ -6428,7 +6442,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
             #endif
-            //printf("server elapsed_time : %lu sec\n", all_time);
+            
+            printf("server elapsed_time : %lu sec\n", all_time);
 
             //sleep(10);
             exit(0);
@@ -6692,7 +6707,9 @@ static void mpi_clock_handler(const evutil_socket_t fd, const short which, void 
 
 int main (int argc, char **argv) {
 
-    //clock_gettime(CLOCK_REALTIME, &all_start);
+#if ALL_TIME
+    clock_gettime(CLOCK_REALTIME, &all_start);
+#endif
     int c;
     bool lock_memory = false;
     bool do_daemonize = false;
@@ -6718,9 +6735,7 @@ int main (int argc, char **argv) {
     bool use_slab_sizes = false;
     char *slab_sizes_unparsed = NULL;
     bool slab_chunk_size_changed = false;
-#if ENABLE_PRINT
-    printf("memcached/memcached.c :: main()-[1]\n");
-#endif
+    printf("나 서버\n");
     // struct for restart code. Initialized up here so we can curry
     // important settings to save or validate.
     struct _mc_meta_data *meta = malloc(sizeof(struct _mc_meta_data));
@@ -6749,7 +6764,7 @@ int main (int argc, char **argv) {
         temp_rank = rank;
 #endif
 #if MEMCACHED_MODE
-    memcached_server_size = size-1;
+    memcached_server_size = 1;
 #endif
 
 #if PS_MODE
@@ -7795,9 +7810,9 @@ int main (int argc, char **argv) {
     if (settings.inter != NULL && strchr(settings.inter, ',')) { //여기 안들어감
         settings.num_threads_per_udp = 1;
     } else {                                                     //여기 들어감          
-#if ENABLE_PRINT
-        printf("memcached/memcached.c :: main()-[10-2] mpi_conn_arr[0]->item : %d\n", mpi_conn_arr[0].item);
-#endif
+//#if ENABLE_PRINT
+        //printf("memcached/memcached.c :: main()-[10-2] mpi_conn_arr[0]->item : %d\n", mpi_conn_arr[0].item);
+//#endif
         settings.num_threads_per_udp = settings.num_threads;
     }
 
@@ -8315,9 +8330,9 @@ int main (int argc, char **argv) {
 #endif
     /* Initialize the uriencode lookup table. */
     uriencode_init();
-#if ENABLE_PRINT
-     printf("memcached/memcached.c :: main()-[14]-10, mpi_conn_arr[0]->item : %d\n", mpi_conn_arr[0].item);
-#endif
+// #if ENABLE_PRINT
+//      printf("memcached/memcached.c :: main()-[14]-10, mpi_conn_arr[0]->item : %d\n", mpi_conn_arr[0].item);
+// #endif
     /* enter the event loop */
 
     pthread_t ttid = pthread_self(); 
@@ -8325,12 +8340,15 @@ int main (int argc, char **argv) {
     // char ch;
     // printf("getchar : ");
     // ch=getchar();
-
+    #if ENABLE_PRINT
+        printf("memcached/memcached.c :: main()-[14]-10\n");
+    #endif
+    //printf("server debugging1\n");
 #if ENABLE_MPI_FUNCTIONS
     while (!stop_main_loop) { //여기를 계속 들어가네 ..
         while(true){
 #if MEMCACHED_MODE
-        mpi_drive_machine(&mpi_conn_arr[rank], ttid);
+        mpi_drive_machine(&mpi_conn_arr[0], ttid);
 #endif
 
 #if PS_MODE
