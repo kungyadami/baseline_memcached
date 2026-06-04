@@ -57,6 +57,7 @@ unsigned long all_time;             //전체 시간 잴 때
 struct timespec all_start, all_end; //전체 시간 잴 때
 volatile int temp_rank=0;
 unsigned long MPI_recv_time, MPI_send_time;
+static bool memcached_measure_enabled = false;
 int old_hash_table_num=0;
 int primary_hash_table_num=0;
 int success = 0;
@@ -160,6 +161,34 @@ enum transmit_result {
     unsigned long recv_brkdwn;
     unsigned long other_brkdwn; //그 외 각종 저장/토크나이즈 연산 성능
     struct timespec start, end;
+
+#if BREAKDOWN
+static unsigned long memcached_elapsed_ns(const struct timespec *start_time,
+                                          const struct timespec *end_time) {
+    return ((end_time->tv_sec - start_time->tv_sec) * BILLION)
+            + end_time->tv_nsec - start_time->tv_nsec;
+}
+
+static void memcached_measure_start(void) {
+    MPI_recv_time = 0;
+    MPI_send_time = 0;
+    send_brkdwn = 0;
+    recv_brkdwn = 0;
+    other_brkdwn = 0;
+    memcached_measure_enabled = true;
+}
+
+static void memcached_measure_end(void) {
+    if (!memcached_measure_enabled) {
+        return;
+    }
+
+    memcached_measure_enabled = false;
+    printf("recv_time : %lu\n", MPI_recv_time);
+    printf("send_time : %lu\n", MPI_send_time);
+    printf("other_time : %lu\n", other_brkdwn);
+}
+#endif
     
 
 // #define DATA_NUM 10000
@@ -5513,6 +5542,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 #endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
+    struct timespec probe_start, probe_end;
     struct timespec recv_start, recv_end;
 
     if (c->rcurr != c->rbuf) {
@@ -5525,22 +5555,62 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         int avail = c->rsize - c->rbytes;
         MPI_Status mpi_recv_status;
         memset(c->rbuf, 0, avail);
-        #if MPI_RECV_BREAKDOWN
-            clock_gettime(CLOCK_REALTIME, &recv_start);
+        unsigned long probe_elapsed = 0;
+        unsigned long recv_elapsed = 0;
+        #if BREAKDOWN
+            if (memcached_measure_enabled) {
+                clock_gettime(CLOCK_MONOTONIC, &probe_start);
+            }
         #endif
         //printf("memcached/mpi_try_read_network, MPI_Probe\n");
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        int count;
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        #if BREAKDOWN
+            if (memcached_measure_enabled) {
+                clock_gettime(CLOCK_MONOTONIC, &probe_end);
+                MPI_recv_time += memcached_elapsed_ns(&probe_start, &probe_end);
+            }
+        #endif
+
+#if BREAKDOWN
+        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG ||
+                mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
+            int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
+                    mpi_recv_status.MPI_SOURCE,
+                    mpi_recv_status.MPI_TAG,
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (err != MPI_SUCCESS) {
+                char err_str[MPI_MAX_ERROR_STRING];
+                int len;
+                MPI_Error_string(err, err_str, &len);
+                fprintf(stderr, "MPI_Recv error: %s\n", err_str);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+
+            if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG) {
+                memcached_measure_start();
+            } else {
+                memcached_measure_end();
+            }
+            continue;
+        }
+#endif
         //printf("?\n");
+        #if BREAKDOWN
+            if (memcached_measure_enabled) {
+                clock_gettime(CLOCK_MONOTONIC, &recv_start);
+            }
+        #endif
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
                 mpi_recv_status.MPI_SOURCE,
                 mpi_recv_status.MPI_TAG,
                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         //printf("[server] recv [%d] \"%s\" \n",mpi_recv_status.MPI_SOURCE, c->rbuf);
-        #if MPI_RECV_BREAKDOWN
-            clock_gettime(CLOCK_REALTIME, &recv_end);
-            MPI_recv_time+=((recv_end.tv_sec-recv_start.tv_sec)*BILLION)+recv_end.tv_nsec-recv_start.tv_nsec;
+        #if BREAKDOWN
+            if (memcached_measure_enabled && mpi_recv_status.MPI_TAG != END_TAG) {
+                clock_gettime(CLOCK_MONOTONIC, &recv_end);
+                MPI_recv_time += memcached_elapsed_ns(&recv_start, &recv_end);
+            }
         #endif
         c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
         //printf("[server] DPU rank : %d\n",c->dpu_rank);
@@ -5556,6 +5626,9 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         //memcpy(c->raw_rbuf, c->rbuf, res);
 
         if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
+#if BREAKDOWN
+            memcached_measure_end();
+#endif
             completed_clients++;
             if(completed_clients == mpi_client_size){
 #if ALL_TIME
@@ -5845,7 +5918,18 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     //printf("memcached server, [%d]에게 전송 메세지 : %s\n", c->rank, mpi_send_buf);
     // printf("[server] send [%d] \"%s\" \n", c-rank, mpi_send_buf);
     // printf("서버에서 저장중인 dpu의 현재 rank : %d\n", c->dpu_rank);
+    #if BREAKDOWN
+        if (memcached_measure_enabled) {
+            clock_gettime(CLOCK_MONOTONIC, &send_start);
+        }
+    #endif
     MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
+    #if BREAKDOWN
+        if (memcached_measure_enabled) {
+            clock_gettime(CLOCK_MONOTONIC, &send_end);
+            MPI_send_time += memcached_elapsed_ns(&send_start, &send_end);
+        }
+    #endif
     get_req_num++;
     if(get_req_num > 100000){
         success++;
@@ -5865,10 +5949,6 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
     }
     c->dpu_rank=1;
 #endif
-    #if MPI_SEND_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &send_end);
-        MPI_send_time+=((send_end.tv_sec-send_start.tv_sec)*BILLION)+send_end.tv_nsec-send_start.tv_nsec;
-    #endif
 
     if (offset >= 0) { //여기 들어감
 
@@ -6428,22 +6508,13 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                 other_brkdwn+=((end.tv_sec-start.tv_sec)*BILLION)+end.tv_nsec-start.tv_nsec;
             #endif
 
-                printf("=========== SERVER BREAKDOWN RESULT===========\n");
-                printf("[send breakdown] : %lu sec\n", send_brkdwn);
-                printf("[recv breakdown] : %lu sec\n", recv_brkdwn);
-                printf("[other breakdown] : %lu sec\n", other_brkdwn);
-
-            #if MPI_RECV_BREAKDOWN
-                printf("[MPI_Recv breakdown] : %lu sec\n", MPI_recv_time);
-            #endif
-            #if MPI_SEND_BREAKDOWN
-                printf("[MPI_Send breakdown] : %lu sec\n", MPI_send_time);
-            #endif
             #if HASH_BREAKDOWN
                 printf("assoc_find : %lu sec\n", hash_time[temp_rank]);
             #endif
             
+            #if ALL_TIME
             printf("server elapsed_time : %lu sec\n", all_time);
+            #endif
 
             //sleep(10);
             exit(0);

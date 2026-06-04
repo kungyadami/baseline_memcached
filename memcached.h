@@ -66,8 +66,8 @@
 #define ENABLE_FPRINT 0
 #define MPI_DEBUG 0
 #define ALL_TIME  0
-#define BREAKDOWN 0
-#define DPU_CACHE 1
+#define BREAKDOWN 1
+#define DPU_CACHE 0
 #define HASH_BREAKDOWN 0
 #define MPI_RECV_BREAKDOWN 0
 #define MPI_SEND_BREAKDOWN 0
@@ -75,6 +75,8 @@
 #define PS_MODE 0
 #define BILLION 1000000000UL
 #define END_TAG 400
+#define DPU_MEASURE_START_TAG 302
+#define DPU_MEASURE_END_TAG 303
 
 #ifdef EXTSTORE
 #include "crc32c.h"
