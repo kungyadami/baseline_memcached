@@ -57,7 +57,12 @@ unsigned long all_time;             //전체 시간 잴 때
 struct timespec all_start, all_end; //전체 시간 잴 때
 volatile int temp_rank=0;
 unsigned long MPI_recv_time, MPI_send_time;
-static bool memcached_measure_enabled = false;
+bool memcached_measure_enabled = false;
+unsigned long MPI_get_hash_time = 0;
+unsigned long MPI_get_hash_lookup_time = 0;
+unsigned long MPI_get_build_resp_time = 0;
+unsigned long MPI_state_machine_time = 0;
+unsigned long MPI_parse_time = 0;
 int old_hash_table_num=0;
 int primary_hash_table_num=0;
 int success = 0;
@@ -175,6 +180,11 @@ static void memcached_measure_start(void) {
     send_brkdwn = 0;
     recv_brkdwn = 0;
     other_brkdwn = 0;
+    MPI_get_hash_time = 0;
+    MPI_get_hash_lookup_time = 0;
+    MPI_get_build_resp_time = 0;
+    MPI_state_machine_time = 0;
+    MPI_parse_time = 0;
     memcached_measure_enabled = true;
 }
 
@@ -184,9 +194,15 @@ static void memcached_measure_end(void) {
     }
 
     memcached_measure_enabled = false;
+    unsigned long categorized_time = MPI_parse_time + MPI_get_hash_time + MPI_get_hash_lookup_time + MPI_get_build_resp_time;
+   // MPI_state_machine_time = other_brkdwn > categorized_time ? other_brkdwn - categorized_time : 0;
     printf("recv_time : %lu\n", MPI_recv_time);
     printf("send_time : %lu\n", MPI_send_time);
     printf("other_time : %lu\n", other_brkdwn);
+    printf("get_hash_time : %lu\n", MPI_get_hash_time);
+    printf("get_hash_lookup_time : %lu\n", MPI_get_hash_lookup_time);
+    printf("get_build_resp_time : %lu\n", MPI_get_build_resp_time);
+    printf("parse_time : %lu\n", MPI_parse_time);
 }
 #endif
     

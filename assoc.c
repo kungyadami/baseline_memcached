@@ -103,9 +103,11 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : 해시 버킷
     //printf("memcached server, assoc_find :: key : %s | hv : %u\n", key, hv);
-    struct timespec hash_op_start, hash_op_end;
-#if HASH_BREAKDOWN
-    clock_gettime(CLOCK_REALTIME, &hash_op_start);
+#if BREAKDOWN
+    struct timespec lookup_start, lookup_end;
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &lookup_start);
+    }
 #endif
     item *it;
     uint64_t oldbucket;
@@ -131,10 +133,12 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
     //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
-    #if HASH_BREAKDOWN
-        clock_gettime(CLOCK_REALTIME, &hash_op_end);
-        hash_time[temp_rank]+=((hash_op_end.tv_sec-hash_op_start.tv_sec)*BILLION)+hash_op_end.tv_nsec-hash_op_start.tv_nsec;
-    #endif
+#if BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &lookup_end);
+        MPI_get_hash_lookup_time += memcached_breakdown_elapsed_ns(&lookup_start, &lookup_end);
+    }
+#endif
     return ret;
 }
 

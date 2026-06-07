@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <sys/syscall.h> //yedam
 #include <stdbool.h>
+#include <time.h>
 /* need this to get IOV_MAX on some platforms. */
 #ifndef __need_IOV_MAX
 #define __need_IOV_MAX
@@ -77,6 +78,21 @@
 #define END_TAG 400
 #define DPU_MEASURE_START_TAG 302
 #define DPU_MEASURE_END_TAG 303
+
+#if BREAKDOWN
+extern bool memcached_measure_enabled;
+extern unsigned long MPI_get_hash_time;
+extern unsigned long MPI_get_hash_lookup_time;
+extern unsigned long MPI_get_build_resp_time;
+extern unsigned long MPI_state_machine_time;
+extern unsigned long MPI_parse_time;
+
+static inline unsigned long memcached_breakdown_elapsed_ns(const struct timespec *start_time,
+                                                           const struct timespec *end_time) {
+    return ((end_time->tv_sec - start_time->tv_sec) * BILLION)
+            + end_time->tv_nsec - start_time->tv_nsec;
+}
+#endif
 
 #ifdef EXTSTORE
 #include "crc32c.h"
