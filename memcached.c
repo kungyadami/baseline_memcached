@@ -51,7 +51,7 @@
 #include <sys/time.h>
 volatile int resp_num;
 int completed_clients;
-int mpi_client_size;
+int client_size;
 unsigned long hash_time[16];
 unsigned long all_time;             //전체 시간 잴 때
 struct timespec all_start, all_end; //전체 시간 잴 때
@@ -5335,6 +5335,36 @@ static int _mc_meta_load_cb(const char *tag, void *ctx, void *data) {
 
 #if ENABLE_MPI_FUNCTIONS
 
+static int mpi_rank_env_int(const char *env_name, int default_value){
+    const char *name = getenv(env_name); //SERVER/DPU/CLIENT
+
+    if(name == NULL || name[0] == '\0'){
+        return default_value;
+    }
+
+    int parsed = atoi(name);
+    
+    if (parsed <= 0) {
+        return default_value;
+    }
+    
+    return parsed;
+}
+
+//현재 DPU_Cache를 담당하는 rank 개수 반환
+static inline int client_rank_count(void) {
+  return mpi_rank_env_int("CLIENT_COUNT", 1);
+}
+
+//현재 Memcached server를 담당하는 rank 개수 반환
+static inline int server_rank_count(void) {
+  return mpi_rank_env_int("SERVER_COUNT", 1);
+}
+
+
+
+
+
 bool mpi_rbuf_switch_to_malloc(struct mpi_conn_info *c) {
     // Might as well start with x2 and work from there.
     size_t size = c->rsize * 2;
@@ -5478,17 +5508,17 @@ void mpi_conn_init(struct mpi_conn_info* mpi_conn_arr, int size){
 #endif
     int server_size;
 #if MEMCACHED_MODE
-    server_size = size/2;
-    mpi_client_size = size/2;
+    server_size = server_rank_count();
+    client_size = client_rank_count();
 #endif
 
 #if PS_MODE
     server_size = size/2;
 #endif
 
-    for(int i=0; i<server_size; i++){
+    for(int i=0; i<client_size; i++){
         #if MEMCACHED_MODE
-            mpi_conn_arr[i].rank = 1;
+            mpi_conn_arr[i].rank = 0;
         #endif
         #if PS_MODE
             mpi_conn_arr[i].rank = i+server_size+1;
@@ -5573,28 +5603,26 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         memset(c->rbuf, 0, avail);
         unsigned long probe_elapsed = 0;
         unsigned long recv_elapsed = 0;
-        #if BREAKDOWN
-            if (memcached_measure_enabled) {
-                clock_gettime(CLOCK_MONOTONIC, &probe_start);
-            }
-        #endif
-        //printf("memcached/mpi_try_read_network, MPI_Probe\n");
+    #if BREAKDOWN
+        if (memcached_measure_enabled) {
+            clock_gettime(CLOCK_MONOTONIC, &probe_start);
+        }
+    #endif
+
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-        #if BREAKDOWN
-            if (memcached_measure_enabled) {
-                clock_gettime(CLOCK_MONOTONIC, &probe_end);
-                MPI_recv_time += memcached_elapsed_ns(&probe_start, &probe_end);
-            }
-        #endif
+
+    #if BREAKDOWN
+        if (memcached_measure_enabled) {
+            clock_gettime(CLOCK_MONOTONIC, &probe_end);
+            MPI_recv_time += memcached_elapsed_ns(&probe_start, &probe_end);
+        }
+    #endif
 
 #if BREAKDOWN
-        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG ||
-                mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
-            int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
-                    mpi_recv_status.MPI_SOURCE,
-                    mpi_recv_status.MPI_TAG,
-                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
+            int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            
             if (err != MPI_SUCCESS) {
                 char err_str[MPI_MAX_ERROR_STRING];
                 int len;
@@ -5611,28 +5639,25 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             continue;
         }
 #endif
-        //printf("?\n");
-        #if BREAKDOWN
-            if (memcached_measure_enabled) {
-                clock_gettime(CLOCK_MONOTONIC, &recv_start);
-            }
-        #endif
-        int err = MPI_Recv(c->rbuf, res, MPI_CHAR,
-                mpi_recv_status.MPI_SOURCE,
-                mpi_recv_status.MPI_TAG,
-                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        //printf("[server] recv [%d] \"%s\" \n",mpi_recv_status.MPI_SOURCE, c->rbuf);
-        #if BREAKDOWN
-            if (memcached_measure_enabled && mpi_recv_status.MPI_TAG != END_TAG) {
-                clock_gettime(CLOCK_MONOTONIC, &recv_end);
-                MPI_recv_time += memcached_elapsed_ns(&recv_start, &recv_end);
-            }
-        #endif
+#if BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &recv_start);
+    }
+#endif
+
+        int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        //printf("server, MPI_Recv(), %d | message : %s\n", mpi_recv_status.MPI_SOURCE, c->rbuf);
+#if BREAKDOWN
+    if (memcached_measure_enabled && mpi_recv_status.MPI_TAG != END_TAG) {
+        clock_gettime(CLOCK_MONOTONIC, &recv_end);
+        MPI_recv_time += memcached_elapsed_ns(&recv_start, &recv_end);
+    }
+#endif
+
         c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
-        //printf("[server] DPU rank : %d\n",c->dpu_rank);
+
 #if DPU_CACHE
         if(c->rank == 0){
-            //printf("여기 들어가는지 확인 필요\n");
             c->rank = 2;
             c->dpu_rank=0;
         }else{
@@ -5646,7 +5671,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             memcached_measure_end();
 #endif
             completed_clients++;
-            if(completed_clients == mpi_client_size){
+            if(completed_clients == client_size){
 #if ALL_TIME
                 clock_gettime(CLOCK_REALTIME, &all_end);
                 all_time+=((all_end.tv_sec-all_start.tv_sec)*BILLION)+all_end.tv_nsec-all_start.tv_nsec;
@@ -6846,18 +6871,18 @@ int main (int argc, char **argv) {
         // }
         MPI_Comm_rank(MPI_COMM_WORLD, &rank); // 내 rank를 MPI_COMM_WORLD라는 통신 그룹에 넣기
         MPI_Comm_size(MPI_COMM_WORLD, &size); // 현재 MPI_COMM_WORLD라는 통신 그룹에 몇개의 rank가 있는
-        int memcached_server_size;
+        int client_size;
 #if HASH_BREAKDOWN
         temp_rank = rank;
 #endif
 #if MEMCACHED_MODE
-    memcached_server_size = 1;
+    client_size = client_rank_count();
 #endif
 
 #if PS_MODE
-    memcached_server_size = size-2;
+    client_size = size-2;
 #endif
-        mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*memcached_server_size);
+        mpi_conn_arr = (struct mpi_conn_info*)malloc(sizeof(struct mpi_conn_info)*client_size);
 
         mpi_conn_init(mpi_conn_arr, size);
 
