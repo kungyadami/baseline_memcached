@@ -40,6 +40,12 @@ static pthread_mutex_t maintenance_lock = PTHREAD_MUTEX_INITIALIZER;
 /* how many powers of 2's worth of buckets we use */
 unsigned int hashpower = HASHPOWER_DEFAULT;
 
+extern unsigned long long lookup_count;
+extern unsigned long long lookup_total_nodes;
+extern unsigned long long lookup_min_nodes;
+extern unsigned long long lookup_max_nodes;
+extern bool memcached_measure_enabled;
+
 #define hashsize(n) ((uint64_t)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
 
@@ -110,6 +116,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
 #endif
     item *it;
+    int scanned=0;
     uint64_t oldbucket;
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
         it = old_hashtable[oldbucket];
@@ -122,6 +129,9 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     int depth = 0;
 #endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
+        if (memcached_measure_enabled) {
+            scanned++;
+        }
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
             break;
@@ -139,6 +149,20 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
         MPI_get_hash_lookup_time += memcached_breakdown_elapsed_ns(&lookup_start, &lookup_end);
     }
 #endif
+
+    if (memcached_measure_enabled) {
+        lookup_count++;
+        lookup_total_nodes += scanned;
+
+        if (scanned < lookup_min_nodes) {
+            lookup_min_nodes = scanned;
+        }
+
+        if (scanned > lookup_max_nodes) {
+            lookup_max_nodes = scanned;
+        }
+    }
+
     return ret;
 }
 

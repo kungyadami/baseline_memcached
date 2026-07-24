@@ -71,6 +71,11 @@ int primary_hash_table_num=0;
 int success = 0;
 int get_req_num = 0;
 
+unsigned long long lookup_count = 0;
+unsigned long long lookup_total_nodes = 0;
+unsigned long long lookup_min_nodes = ULLONG_MAX;
+unsigned long long lookup_max_nodes = 0;
+
 #ifdef HAVE_GETOPT_LONG
 #include <getopt.h> //프로그램 실행시 인자 처리 잘해주는 라이브러리
 #endif
@@ -166,7 +171,7 @@ enum transmit_result {
 
     struct timespec start, end;
 
-#if BREAKDOWN || OTHER_BREAKDOWN
+//#if BREAKDOWN || OTHER_BREAKDOWN
 unsigned long memcached_elapsed_ns(const struct timespec *start_time, const struct timespec *end_time) {
     return ((end_time->tv_sec - start_time->tv_sec) * BILLION) + end_time->tv_nsec - start_time->tv_nsec;
 }
@@ -204,8 +209,16 @@ static void memcached_measure_end(void) {
     printf("lookup time : %lu\n", MPI_lookup_time);
     printf("resp time : %lu\n", MPI_resp_time);
 #endif
+    printf("lookup_count : %llu\n", lookup_count);
+    printf("lookup_total_nodes : %llu\n", lookup_total_nodes);
+    printf("lookup_min_nodes : %llu\n", lookup_count ? lookup_min_nodes : 0);
+    printf("lookup_max_nodes : %llu\n", lookup_max_nodes);
+    printf("lookup_avg_nodes : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
+
+
+
 }
-#endif
+//#endif
     
 
 // #define DATA_NUM 10000
@@ -5613,7 +5626,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
 
 
-#if BREAKDOWN || OTHER_BREAKDOWN
+//#if BREAKDOWN || OTHER_BREAKDOWN
         if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
             //printf("서버가 클라이언트로부터 measure_start를 받음\n");
             int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -5633,7 +5646,7 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
             }
             continue;
         }
-#endif
+//#endif
 
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         //printf("server, MPI_Recv(), %d | message : %s\n", mpi_recv_status.MPI_SOURCE, c->rbuf);
