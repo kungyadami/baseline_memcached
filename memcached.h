@@ -68,6 +68,7 @@
 #define MPI_DEBUG 0
 #define ALL_TIME  0
 #define BREAKDOWN 1
+#define OTHER_BREAKDOWN 0
 #define DPU_CACHE 0
 #define HASH_BREAKDOWN 0
 #define MPI_RECV_BREAKDOWN 0
@@ -79,19 +80,17 @@
 #define DPU_MEASURE_START_TAG 302
 #define DPU_MEASURE_END_TAG 303
 
-#if BREAKDOWN
+#if BREAKDOWN || OTHER_BREAKDOWN
 extern bool memcached_measure_enabled;
 extern unsigned long MPI_get_hash_time;
 extern unsigned long MPI_get_hash_lookup_time;
 extern unsigned long MPI_get_build_resp_time;
 extern unsigned long MPI_state_machine_time;
 extern unsigned long MPI_parse_time;
+extern unsigned long MPI_lookup_time;
+extern unsigned long MPI_resp_time;
 
-static inline unsigned long memcached_breakdown_elapsed_ns(const struct timespec *start_time,
-                                                           const struct timespec *end_time) {
-    return ((end_time->tv_sec - start_time->tv_sec) * BILLION)
-            + end_time->tv_nsec - start_time->tv_nsec;
-}
+unsigned long memcached_elapsed_ns( const struct timespec *start_time, const struct timespec *end_time);
 #endif
 
 #ifdef EXTSTORE

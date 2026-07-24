@@ -3317,9 +3317,6 @@ static void process_refresh_certs_command(conn *c, token_t *tokens, const size_t
 // Leaving this note here to spend more time on a fix when necessary, or if an
 // opportunity becomes obvious.
 void process_command_ascii(conn *c, char *command) {
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: process_command_ascii()\n");
-#endif
 
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
@@ -3328,9 +3325,7 @@ void process_command_ascii(conn *c, char *command) {
     assert(c != NULL);
 
     MEMCACHED_PROCESS_COMMAND_START(c->sfd, c->rcurr, c->rbytes);
-#if ENABLE_FPRINT
-    fprintf(stderr, "<%d %s\n", c->sfd, command);
-#endif
+
     /*
      * for commands set/add/replace, we build an item and read the data
      * directly into it, then continue in nread_complete().
@@ -3546,16 +3541,16 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
     char *key;
     size_t nkey;
     item *it;
-#if BREAKDOWN
-    struct timespec build_start, build_end;
-#endif
     token_t *key_token = &tokens[KEY_TOKEN]; //KEY_TOKEN 은 1이라서, key값을 얻을 수 있는 토큰 위치를 뜻하는듯
     int32_t exptime_int = 0;
     rel_time_t exptime = 0;
     bool fail_length = false;
     assert(c != NULL);
     mc_resp *resp = c->resp;
-    //printf("mpi_process_get_command1, stop, c->state : %d\n", c->state);
+
+    struct timespec get_start, get_end;
+    struct timespec resp_start, resp_end;
+
     if (should_touch) {
         // For get and touch commands, use first token as exptime
         if (!safe_strtol(tokens[1].value, &exptime_int)) {
@@ -3577,7 +3572,19 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                 fail_length = true;
                 goto stop;
             }
+#if OTHER_BREAKDOWN
+    if(memcached_measure_enabled){
+        clock_gettime(CLOCK_MONOTONIC, &get_start);
+    }
+#endif
+
             it = limited_get(key, nkey, c->thread, exptime, should_touch, DO_UPDATE, &overflow);
+#if OTHER_BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &get_end);
+        MPI_lookup_time+= memcached_elapsed_ns(&get_start, &get_end);
+    }
+#endif
             //-> 여기서 memcached.c의 limited_get()으로 들어감
             if (settings.detail_enabled) {
                 stats_prefix_record_get(key, nkey, NULL != it);
@@ -3591,13 +3598,12 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                  *   " " + flags + " " + data length + "\r\n" + data (with \r\n)
                  * 응답을 다음과 같이 구성한다고 함.
                  */
-
-                {
-#if BREAKDOWN
-                  if (memcached_measure_enabled) {
-                      clock_gettime(CLOCK_MONOTONIC, &build_start);
-                  }
+#if OTHER_BREAKDOWN
+    if(memcached_measure_enabled){
+        clock_gettime(CLOCK_MONOTONIC, &resp_start);
+    }
 #endif
+                {
                   MEMCACHED_COMMAND_GET(c->rank, ITEM_key(it), it->nkey,
                                         it->nbytes, ITEM_get_cas(it));
                   int nbytes = it->nbytes;
@@ -3631,17 +3637,9 @@ static inline void mpi_process_get_command(struct mpi_conn_info *c, token_t *tok
                   }
 #else
                   if ((it->it_flags & ITEM_CHUNKED) == 0) {
-                    printf("??4\n");
                       resp_add_iov(resp, ITEM_data(it), it->nbytes, tid);
                   } else {
-                        printf("??5\n");
                       resp_add_chunked_iov(resp, it, it->nbytes);
-                  }
-#endif
-#if BREAKDOWN
-                  if (memcached_measure_enabled) {
-                      clock_gettime(CLOCK_MONOTONIC, &build_end);
-                      MPI_get_build_resp_time += memcached_breakdown_elapsed_ns(&build_start, &build_end);
                   }
 #endif
                 }
@@ -3730,20 +3728,15 @@ stop:
     } else {
         //printf("mpi_process_get_command10, stop, c->state : %d\n", c->state);
         // Tag the end token onto the most recent response object.
-#if BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &build_start);
-        }
-#endif
         resp_add_iov(resp, "END\r\n", 5, tid);
-#if BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &build_end);
-            MPI_get_build_resp_time += memcached_breakdown_elapsed_ns(&build_start, &build_end);
-        }
-#endif
         //conn_set_state(c, conn_new_cmd);
         c->state = conn_new_cmd;
+#if OTHER_BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &resp_end);
+        MPI_resp_time+= memcached_elapsed_ns(&resp_start, &resp_end);
+    }
+#endif
         //printf("mpi_process_get_command11, stop, c->state : %d\n", c->state);
     }
 }
@@ -3877,17 +3870,18 @@ void mpi_complete_nread_ascii(struct mpi_conn_info *c) {
 
 
 void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) {
+    struct timespec parse_start, parse_end;
+#if OTHER_BREAKDOWN
+    if(memcached_measure_enabled){
+        clock_gettime(CLOCK_MONOTONIC, &parse_start);
+    }
+#endif
+
     token_t tokens[MAX_TOKENS];
     size_t ntokens;
     int comm;
     MEMCACHED_PROCESS_COMMAND_START(c->rank, c->rcurr, c->rbytes);
 
-#if BREAKDOWN
-    struct timespec parse_start, parse_end;
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &parse_start);
-    }
-#endif
     assert(c != NULL);
 
     if (!mpi_resp_start(c)) {
@@ -3904,14 +3898,14 @@ void mpi_process_command_ascii(struct mpi_conn_info *c, char *command, int tid) 
         //return;
     }
 
+#if OTHER_BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &parse_end);
+        MPI_parse_time+= memcached_elapsed_ns(&parse_start, &parse_end);
+    }
+#endif
     // Meta commands are all 2-char in length.
     char first = tokens[COMMAND_TOKEN].value[0];
-    #if BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &parse_end);
-            MPI_parse_time += memcached_breakdown_elapsed_ns(&parse_start, &parse_end);
-        }
-    #endif
     if (first == 'g') {
         // Various get commands are very common.
         WANT_TOKENS_MIN(ntokens, 3);
@@ -4084,22 +4078,18 @@ void mpi_process_update_command(struct mpi_conn_info *c, token_t *tokens, const 
 
 
 int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
-#if ENABLE_PRINT
-    printf("memcached/proto_text.c :: mpi_try_read_command_ascii()\n");
+struct timespec parse_start, parse_end;
+
+#if OTHER_BREAKDOWN
+    if(memcached_measure_enabled){
+        clock_gettime(CLOCK_MONOTONIC, &parse_start);
+    }
 #endif
     char *el, *cont;
-#if BREAKDOWN
-    struct timespec parse_start, parse_end;
-#endif
 
     if (c->rbytes == 0)
         return 0;
 
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &parse_start);
-    }
-#endif
     el = memchr(c->rcurr, '\n', c->rbytes); //\n이라고 하는 바이트값을 찾는 함수
     //memchr : 메모리 영역에서 특정 바이트값을 처음 찾는 함수
     //그래서 받아온 메세지의 형식은
@@ -4141,36 +4131,25 @@ int mpi_try_read_command_ascii(struct mpi_conn_info *c, int tid) {
 
     //el은 \n 을 가리키는 중이라, c->rcurr보다 바이트수가 큰 상태. 그래서 뺄셈했을 때 1보다 당연히 크겠지?
     //메세지 보내는 형식은 위에 써놨으므로, 후자 조건도 \r이 들어가는게 맞음
-    //printf("try_read_command_ascii2 :: c->rcurr : %s\n",c->rcurr);
     if ((el - c->rcurr) > 1 && *(el - 1) == '\r') { //여기가 진짜 줄바꿈 구간이 맞는지 확인하는 부분 같다
         el--; //'\r' 위치를 가리키게 됨
     }
     *el = '\0'; //그 뒤에 '\0'을 추가하는듯? 이걸 추가함으로써, value와 key 사이 \0이 들어가서 구별을 할 수 있음
     //참고로, \0 붙는다해서 c->rcurr 자체가 key/value로 분리되진 않음. 곧 불릴 mpi_process_command_ascii 함수에는 요청했던 메세지 전체가 다 들어감
     assert(cont <= (c->rcurr + c->rbytes));
-
-    c->last_cmd_time = current_time; //시간 업데이트하기
-#if BREAKDOWN
+#if OTHER_BREAKDOWN
     if (memcached_measure_enabled) {
         clock_gettime(CLOCK_MONOTONIC, &parse_end);
-        MPI_parse_time += memcached_breakdown_elapsed_ns(&parse_start, &parse_end);
+        MPI_parse_time+= memcached_elapsed_ns(&parse_start, &parse_end);
     }
 #endif
-    if(c->resp_head!=NULL){
-        //printf("memcached/proto_text.c :: mpi_try_read_command_ascii() prev, c->resp_head->chunked_data_iov : %d\n", c->resp_head->chunked_data_iov);
-    }
+    c->last_cmd_time = current_time; //시간 업데이트하기
     mpi_process_command_ascii(c, c->rcurr, tid);
 
-    //printf("c->rbytes1 : %d\n", c->rbytes);
     c->rbytes -= (cont - c->rcurr);
-    //printf("c->rbytes2 : %d\n", c->rbytes);
     c->rcurr = cont;
 
-    // printf("mpi_process_command_ascii, c->rbuf : %s\n",c->rbuf);
-    // printf("mpi_process_command_ascii, c->rsize : %d\n",c->rsize);
-    // printf("mpi_process_command_ascii, c->rcurr : %s\n",c->rcurr);
     assert(c->rcurr <= (c->rbuf + c->rsize));
-    //printf("memcached/proto_text.c :: c->state : %d\n", c->state);
     return 1;
 }
 #endif

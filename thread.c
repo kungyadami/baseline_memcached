@@ -1051,17 +1051,7 @@ item *item_alloc(const char *key, size_t nkey, client_flags_t flags, rel_time_t 
 item *item_get(const char *key, const size_t nkey, LIBEVENT_THREAD *t, const bool do_update) {
     item *it;
     uint32_t hv;
-#if BREAKDOWN
-    struct timespec hash_start, hash_end;
-    if (memcached_measure_enabled) { clock_gettime(CLOCK_MONOTONIC, &hash_start); }
-#endif
     hv = hash(key, nkey);
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &hash_end);
-        MPI_get_hash_time += memcached_breakdown_elapsed_ns(&hash_start, &hash_end);
-    }
-#endif
     item_lock(hv);
     it = do_item_get(key, nkey, hv, t, do_update);
     item_unlock(hv);
