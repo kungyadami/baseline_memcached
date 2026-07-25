@@ -76,6 +76,8 @@ unsigned long long lookup_total_nodes = 0;
 unsigned long long lookup_min_nodes = ULLONG_MAX;
 unsigned long long lookup_max_nodes = 0;
 
+void assoc_print_chain_length_stats(void);
+
 #ifdef HAVE_GETOPT_LONG
 #include <getopt.h> //프로그램 실행시 인자 처리 잘해주는 라이브러리
 #endif
@@ -209,12 +211,12 @@ static void memcached_measure_end(void) {
     printf("lookup time : %lu\n", MPI_lookup_time);
     printf("resp time : %lu\n", MPI_resp_time);
 #endif
-    printf("lookup_count : %llu\n", lookup_count);
-    printf("lookup_total_nodes : %llu\n", lookup_total_nodes);
-    printf("lookup_min_nodes : %llu\n", lookup_count ? lookup_min_nodes : 0);
-    printf("lookup_max_nodes : %llu\n", lookup_max_nodes);
-    printf("lookup_avg_nodes : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
-
+    // printf("lookup_count : %llu\n", lookup_count);
+    // printf("lookup_total_nodes : %llu\n", lookup_total_nodes);
+    // printf("lookup_min_nodes : %llu\n", lookup_count ? lookup_min_nodes : 0);
+    // printf("lookup_max_nodes : %llu\n", lookup_max_nodes);
+    // printf("lookup_avg_nodes : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
+    //assoc_print_chain_length_stats();
 
 
 }

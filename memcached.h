@@ -67,8 +67,8 @@
 #define ENABLE_FPRINT 0
 #define MPI_DEBUG 0
 #define ALL_TIME  0
-#define BREAKDOWN 1
-#define OTHER_BREAKDOWN 0
+#define BREAKDOWN 0
+#define OTHER_BREAKDOWN 1
 #define DPU_CACHE 0
 #define HASH_BREAKDOWN 0
 #define MPI_RECV_BREAKDOWN 0

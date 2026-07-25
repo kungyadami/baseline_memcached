@@ -116,7 +116,7 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
 #endif
     item *it;
-    int scanned=0;
+    //int scanned=0;
     uint64_t oldbucket;
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
         it = old_hashtable[oldbucket];
@@ -129,9 +129,9 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     int depth = 0;
 #endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
-        if (memcached_measure_enabled) {
-            scanned++;
-        }
+        // if (memcached_measure_enabled) {
+        //     scanned++;
+        // }
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
             break;
@@ -150,18 +150,18 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     }
 #endif
 
-    if (memcached_measure_enabled) {
-        lookup_count++;
-        lookup_total_nodes += scanned;
+    // if (memcached_measure_enabled) {
+    //     lookup_count++;
+    //     lookup_total_nodes += scanned;
 
-        if (scanned < lookup_min_nodes) {
-            lookup_min_nodes = scanned;
-        }
+    //     if (scanned < lookup_min_nodes) {
+    //         lookup_min_nodes = scanned;
+    //     }
 
-        if (scanned > lookup_max_nodes) {
-            lookup_max_nodes = scanned;
-        }
-    }
+    //     if (scanned > lookup_max_nodes) {
+    //         lookup_max_nodes = scanned;
+    //     }
+    // }
 
     return ret;
 }
@@ -269,6 +269,130 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
     /* Note:  we never actually get here.  the callers don't delete things
        they can't find. */
     assert(*before != 0);
+}
+
+void assoc_print_chain_length_stats(void) {
+    unsigned long long total_chain_nodes = 0;
+    unsigned long long nonempty_buckets = 0;
+    unsigned long long empty_buckets = 0;
+    unsigned long long max_chain_length = 0;
+    unsigned long long min_chain_length = ULLONG_MAX;
+    unsigned long long bucket_count = 0;
+    unsigned long long *chain_length_buckets = NULL;
+
+    mutex_lock(&maintenance_lock);
+
+    bucket_count = hashsize(hashpower);
+    for (uint64_t i = 0; i < bucket_count; i++) {
+        unsigned long long chain_length = 0;
+        item *it = primary_hashtable[i];
+
+        while (it != NULL) {
+            chain_length++;
+            it = it->h_next;
+        }
+
+        if (chain_length > 0) {
+            nonempty_buckets++;
+            total_chain_nodes += chain_length;
+
+            if (chain_length < min_chain_length) {
+                min_chain_length = chain_length;
+            }
+            if (chain_length > max_chain_length) {
+                max_chain_length = chain_length;
+            }
+        } else {
+            empty_buckets++;
+        }
+    }
+
+    if (expanding && old_hashtable != NULL) {
+        unsigned long long old_bucket_count = hashsize(hashpower - 1);
+
+        for (uint64_t i = 0; i < old_bucket_count; i++) {
+            unsigned long long chain_length = 0;
+            item *it = old_hashtable[i];
+
+            while (it != NULL) {
+                chain_length++;
+                it = it->h_next;
+            }
+
+            if (chain_length > 0) {
+                nonempty_buckets++;
+                total_chain_nodes += chain_length;
+
+                if (chain_length < min_chain_length) {
+                    min_chain_length = chain_length;
+                }
+                if (chain_length > max_chain_length) {
+                    max_chain_length = chain_length;
+                }
+            } else {
+                empty_buckets++;
+            }
+        }
+
+        bucket_count += old_bucket_count;
+    }
+
+    mutex_unlock(&maintenance_lock);
+
+    printf("chain_bucket_count : %llu\n", bucket_count);
+    printf("chain_nonempty_buckets : %llu\n", nonempty_buckets);
+    printf("chain_empty_buckets : %llu\n", empty_buckets);
+    printf("chain_total_nodes : %llu\n", total_chain_nodes);
+    printf("chain_min_length : %llu\n", nonempty_buckets ? min_chain_length : 0);
+    printf("chain_max_length : %llu\n", max_chain_length);
+    printf("chain_avg_length_nonempty : %.2f\n",
+           nonempty_buckets ? (double)total_chain_nodes / (double)nonempty_buckets : 0.0);
+    printf("chain_avg_length_all_buckets : %.6f\n",
+           bucket_count ? (double)total_chain_nodes / (double)bucket_count : 0.0);
+
+    chain_length_buckets = calloc(max_chain_length + 1, sizeof(unsigned long long));
+    if (chain_length_buckets == NULL) {
+        printf("chain_histogram_error : calloc failed\n");
+        return;
+    }
+
+    mutex_lock(&maintenance_lock);
+
+    for (uint64_t i = 0; i < hashsize(hashpower); i++) {
+        unsigned long long chain_length = 0;
+        item *it = primary_hashtable[i];
+
+        while (it != NULL) {
+            chain_length++;
+            it = it->h_next;
+        }
+
+        chain_length_buckets[chain_length]++;
+    }
+
+    if (expanding && old_hashtable != NULL) {
+        unsigned long long old_bucket_count = hashsize(hashpower - 1);
+
+        for (uint64_t i = 0; i < old_bucket_count; i++) {
+            unsigned long long chain_length = 0;
+            item *it = old_hashtable[i];
+
+            while (it != NULL) {
+                chain_length++;
+                it = it->h_next;
+            }
+
+            chain_length_buckets[chain_length]++;
+        }
+    }
+
+    mutex_unlock(&maintenance_lock);
+
+    for (unsigned long long i = 0; i <= max_chain_length; i++) {
+        printf("chain_bucket_len_%llu : %llu\n", i, chain_length_buckets[i]);
+    }
+
+    free(chain_length_buckets);
 }
 
 
