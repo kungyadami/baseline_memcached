@@ -109,14 +109,14 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     //nkey : 넣은 key값의 size ( ex: key_0은 5, key_10은 6 ..)
     //hv : 해시 버킷
     //printf("memcached server, assoc_find :: key : %s | hv : %u\n", key, hv);
-#if HASH_BREAKDOWN
     struct timespec lookup_start, lookup_end;
+#if HASH_BREAKDOWN
     if (memcached_measure_enabled) {
         clock_gettime(CLOCK_MONOTONIC, &lookup_start);
     }
 #endif
     item *it;
-    //int scanned=0;
+    int scanned=0;
     uint64_t oldbucket;
     if (expanding && (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket){
         it = old_hashtable[oldbucket];
@@ -129,9 +129,11 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     int depth = 0;
 #endif
     while (it) { //여기가 찾는 구간이다..!ㅎㅎ
-        // if (memcached_measure_enabled) {
-        //     scanned++;
-        // }
+#if HASH_BREAKDOWN
+        if (memcached_measure_enabled) {
+            scanned++;
+        }
+#endif
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
             break;
@@ -142,27 +144,17 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 #endif
     }
     MEMCACHED_ASSOC_FIND(key, nkey, depth);
-    //trace.h에 정의되어있음 그냥 대충 찾는거라고 하자 힝 ㅠㅠ 정의된 부분을 못찾음
 #if HASH_BREAKDOWN
     if (memcached_measure_enabled) {
         clock_gettime(CLOCK_MONOTONIC, &lookup_end);
-        MPI_get_hash_lookup_time += memcached_breakdown_elapsed_ns(&lookup_start, &lookup_end);
+        MPI_get_hash_lookup_time += memcached_elapsed_ns(&lookup_start, &lookup_end);
+    }
+
+    if (memcached_measure_enabled) {
+        lookup_count++;
+        lookup_total_nodes += scanned;
     }
 #endif
-
-    // if (memcached_measure_enabled) {
-    //     lookup_count++;
-    //     lookup_total_nodes += scanned;
-
-    //     if (scanned < lookup_min_nodes) {
-    //         lookup_min_nodes = scanned;
-    //     }
-
-    //     if (scanned > lookup_max_nodes) {
-    //         lookup_max_nodes = scanned;
-    //     }
-    // }
-
     return ret;
 }
 

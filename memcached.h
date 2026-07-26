@@ -68,9 +68,9 @@
 #define MPI_DEBUG 0
 #define ALL_TIME  0
 #define BREAKDOWN 0
-#define OTHER_BREAKDOWN 1
+#define OTHER_BREAKDOWN 0
 #define DPU_CACHE 0
-#define HASH_BREAKDOWN 0
+#define HASH_BREAKDOWN 1
 #define MPI_RECV_BREAKDOWN 0
 #define MPI_SEND_BREAKDOWN 0
 #define MEMCACHED_MODE 1
@@ -80,7 +80,7 @@
 #define DPU_MEASURE_START_TAG 302
 #define DPU_MEASURE_END_TAG 303
 
-#if BREAKDOWN || OTHER_BREAKDOWN
+#if BREAKDOWN || OTHER_BREAKDOWN || HASH_BREAKDOWN
 extern bool memcached_measure_enabled;
 extern unsigned long MPI_get_hash_time;
 extern unsigned long MPI_get_hash_lookup_time;
@@ -126,7 +126,7 @@ unsigned long memcached_elapsed_ns( const struct timespec *start_time, const str
 #define BIN_MAX_EXTLEN 20 // length of the _incr command is currently the longest.
 
 /* Initial power multiplier for the hash table */
-#define HASHPOWER_DEFAULT 16
+#define HASHPOWER_DEFAULT 20
 #define HASHPOWER_MAX 32
 
 /* Abstract the size of an item's client flag suffix */

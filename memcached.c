@@ -65,6 +65,7 @@ unsigned long MPI_state_machine_time = 0;
 unsigned long MPI_parse_time = 0;
 unsigned long MPI_lookup_time = 0;
 unsigned long MPI_resp_time = 0;
+unsigned long MPI_transmit_post_time = 0;
 
 int old_hash_table_num=0;
 int primary_hash_table_num=0;
@@ -191,6 +192,7 @@ static void memcached_measure_start(void) {
     MPI_parse_time = 0;
     MPI_lookup_time = 0;
     MPI_resp_time = 0;
+    MPI_transmit_post_time = 0;
 #endif
     memcached_measure_enabled = true;
 }
@@ -203,14 +205,21 @@ static void memcached_measure_end(void) {
     printf("recv_time : %lu\n", MPI_recv_time);
     printf("send_time : %lu\n", MPI_send_time);
     printf("other_time : %lu\n", MPI_other_time);
-    printf("get_hash_time : %lu\n", MPI_get_hash_time);
-    printf("get_hash_lookup_time : %lu\n", MPI_get_hash_lookup_time);
-    printf("get_build_resp_time : %lu\n", MPI_get_build_resp_time);
 #if OTHER_BREAKDOWN
     printf("parse_time : %lu\n", MPI_parse_time);
     printf("lookup time : %lu\n", MPI_lookup_time);
     printf("resp time : %lu\n", MPI_resp_time);
+    printf("transmit post time : %lu\n", MPI_transmit_post_time);
 #endif
+
+
+#if HASH_BREAKDOWN
+    printf("get_hash_lookup_time : %lu\n", MPI_get_hash_lookup_time);
+    printf("lookup 하나 당 평균 탐색 시간 : %lu\n", MPI_get_hash_lookup_time/lookup_count);
+    printf("lookup 하나 당 평균 방문 노드 갯수 : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
+    printf("총 방문 노드 갯수 : %d\n", lookup_total_nodes);
+#endif
+
     // printf("lookup_count : %llu\n", lookup_count);
     // printf("lookup_total_nodes : %llu\n", lookup_total_nodes);
     // printf("lookup_min_nodes : %llu\n", lookup_count ? lookup_min_nodes : 0);
@@ -5971,13 +5980,24 @@ ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
         }
     #endif
 
+
+ #if OTHER_BREAKDOWN
+        if (memcached_measure_enabled) {
+            clock_gettime(CLOCK_MONOTONIC, &other_start);
+        }
+#endif
     if (offset >= 0) { //여기 들어감
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += offset;
         pthread_mutex_unlock(&c->thread->stats.mutex);
         // Decrement any partial IOV's and complete any finished resp's.
         mpi_transmit_post(c, offset);
-
+#if OTHER_BREAKDOWN
+    if (memcached_measure_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &other_end);
+        MPI_transmit_post_time += memcached_elapsed_ns(&other_start, &other_end);
+    }
+#endif
         if (c->resp_head) {
             return TRANSMIT_INCOMPLETE;
         } else {
