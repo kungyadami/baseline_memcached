@@ -76,6 +76,8 @@ unsigned long long lookup_count = 0;
 unsigned long long lookup_total_nodes = 0;
 unsigned long long lookup_min_nodes = ULLONG_MAX;
 unsigned long long lookup_max_nodes = 0;
+unsigned long long lookup_scanned1_count = 0;
+unsigned long lookup_scanned1_time = 0;
 
 void assoc_print_chain_length_stats(void);
 
@@ -188,6 +190,12 @@ static void memcached_measure_start(void) {
     MPI_get_hash_lookup_time = 0;
     MPI_get_build_resp_time = 0;
     MPI_state_machine_time = 0;
+    lookup_count = 0;
+    lookup_total_nodes = 0;
+    lookup_min_nodes = ULLONG_MAX;
+    lookup_max_nodes = 0;
+    lookup_scanned1_count = 0;
+    lookup_scanned1_time = 0;
 #if OTHER_BREAKDOWN
     MPI_parse_time = 0;
     MPI_lookup_time = 0;
@@ -215,9 +223,12 @@ static void memcached_measure_end(void) {
 
 #if HASH_BREAKDOWN
     printf("get_hash_lookup_time : %lu\n", MPI_get_hash_lookup_time);
-    printf("lookup 하나 당 평균 탐색 시간 : %lu\n", MPI_get_hash_lookup_time/lookup_count);
+    printf("lookup 하나 당 평균 탐색 시간 : %llu\n", lookup_count ? (unsigned long long)MPI_get_hash_lookup_time / lookup_count : 0);
     printf("lookup 하나 당 평균 방문 노드 갯수 : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
-    printf("총 방문 노드 갯수 : %d\n", lookup_total_nodes);
+    printf("총 방문 노드 갯수 : %llu\n", lookup_total_nodes);
+    printf("scanned_1_lookup_count : %llu\n", lookup_scanned1_count);
+    printf("scanned_1_lookup_time_ns : %lu\n", lookup_scanned1_time);
+    printf("scanned_1_lookup_avg_time_ns : %llu\n", lookup_scanned1_count ? (unsigned long long)lookup_scanned1_time / lookup_scanned1_count : 0);
 #endif
 
     // printf("lookup_count : %llu\n", lookup_count);
@@ -225,7 +236,7 @@ static void memcached_measure_end(void) {
     // printf("lookup_min_nodes : %llu\n", lookup_count ? lookup_min_nodes : 0);
     // printf("lookup_max_nodes : %llu\n", lookup_max_nodes);
     // printf("lookup_avg_nodes : %.2f\n", lookup_count ? (double)lookup_total_nodes / lookup_count : 0.0);
-    //assoc_print_chain_length_stats();
+   // assoc_print_chain_length_stats();
 
 
 }

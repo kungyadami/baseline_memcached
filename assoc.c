@@ -44,6 +44,8 @@ extern unsigned long long lookup_count;
 extern unsigned long long lookup_total_nodes;
 extern unsigned long long lookup_min_nodes;
 extern unsigned long long lookup_max_nodes;
+extern unsigned long long lookup_scanned1_count;
+extern unsigned long lookup_scanned1_time;
 extern bool memcached_measure_enabled;
 
 #define hashsize(n) ((uint64_t)1<<(n))
@@ -147,7 +149,12 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
 #if HASH_BREAKDOWN
     if (memcached_measure_enabled) {
         clock_gettime(CLOCK_MONOTONIC, &lookup_end);
-        MPI_get_hash_lookup_time += memcached_elapsed_ns(&lookup_start, &lookup_end);
+        unsigned long lookup_elapsed = memcached_elapsed_ns(&lookup_start, &lookup_end);
+        MPI_get_hash_lookup_time += lookup_elapsed;
+        if (scanned == 1) {
+            lookup_scanned1_count++;
+            lookup_scanned1_time += lookup_elapsed;
+        }
     }
 
     if (memcached_measure_enabled) {
