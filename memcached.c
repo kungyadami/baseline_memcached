@@ -5649,25 +5649,25 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
 
 
 //#if BREAKDOWN || OTHER_BREAKDOWN
-        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
-            //printf("서버가 클라이언트로부터 measure_start를 받음\n");
-            int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            
-            if (err != MPI_SUCCESS) {
-                char err_str[MPI_MAX_ERROR_STRING];
-                int len;
-                MPI_Error_string(err, err_str, &len);
-                fprintf(stderr, "MPI_Recv error: %s\n", err_str);
-                MPI_Abort(MPI_COMM_WORLD, 1);
-            }
-
-            if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG) {
-                memcached_measure_start();
-            } else {
-                memcached_measure_end();
-            }
-            continue;
+    if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
+        //printf("서버가 클라이언트로부터 measure_start를 받음\n");
+        int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        
+        if (err != MPI_SUCCESS) {
+            char err_str[MPI_MAX_ERROR_STRING];
+            int len;
+            MPI_Error_string(err, err_str, &len);
+            fprintf(stderr, "MPI_Recv error: %s\n", err_str);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
+
+        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG) {
+            memcached_measure_start();
+        } else {
+            memcached_measure_end();
+        }
+        continue;
+    }
 //#endif
 
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
