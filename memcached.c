@@ -5622,76 +5622,74 @@ static void mpi_conn_close(struct mpi_conn_info *c) {
 static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){ 
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
-    struct timespec recv_start, recv_end;
+    server_bin_set_req_t resp;
 
-    if (c->rcurr != c->rbuf) {
-        if (c->rbytes > 0) /* otherwise there's nothing to copy */
-            memmove(c->rbuf, c->rcurr, c->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
-        c->rcurr = c->rbuf;
-    }
+    // if (c->rcurr != c->rbuf) {
+    //     if (c->rbytes > 0) /* otherwise there's nothing to copy */
+    //         memmove(c->rbuf, c->rcurr, c->rbytes); //rcurr의 위치에서 rbytes 만큼의 바이트를 rbuf로 옮기기
+    //     c->rcurr = c->rbuf;
+    // }
 
     while(1){
         int avail = c->rsize - c->rbytes;
-        MPI_Status mpi_recv_status;
-        memset(c->rbuf, 0, avail);
-        unsigned long probe_elapsed = 0;
-        unsigned long recv_elapsed = 0;
+        MPI_Status status;
+        int count = 0;
+        int err;
+        //memset(c->rbuf, 0, avail);
+        memset(&resp, 0, sizeof(resp));
 
-        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
-        MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
+        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status, MPI_BYTE, &count);
 
+        c->rank = status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
 
-    if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
-        int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        switch (status.MPI_TAG) {
+        case SET_REQ_TAG:
+            if (count != sizeof(server_bin_set_req_t)) {
+                printf("count != Server에서 받은 구조체의 크기가 다름\n");
+                return READ_ERROR;
+            }
+            c->bin_req_tag = status.MPI_TAG;
+            memset(&c->bin_set_req, 0, sizeof(c->bin_set_req));
+            //printf("[server] MPI_Recv, set_req_tag\n");
+            err = MPI_Recv(&c->bin_set_req, sizeof(c->bin_set_req), MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            //printf("Server SET Recv\n");
+            if (err != MPI_SUCCESS) { return READ_ERROR; }
+
+            return READ_DATA_RECEIVED;
         
-        if (err != MPI_SUCCESS) {
-            char err_str[MPI_MAX_ERROR_STRING];
-            int len;
-            MPI_Error_string(err, err_str, &len);
-            fprintf(stderr, "MPI_Recv error: %s\n", err_str);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
+        case GET_REQ_TAG:
+            if (count != sizeof(server_bin_get_req_t)) {
+                printf("count != Server에서 받은 구조체의 크기가 다름\n");
+                return READ_ERROR;
+            }
+            c->bin_req_tag = status.MPI_TAG;
+            memset(&c->bin_get_req, 0, sizeof(c->bin_get_req));
+            err = MPI_Recv(&c->bin_get_req, sizeof(c->bin_get_req), MPI_BYTE, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            //printf("Server GET Recv\n");
+            if (err != MPI_SUCCESS) { return READ_ERROR; }
+            return READ_DATA_RECEIVED;
 
-        if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG) {
-            memcached_measure_start();
-        } else {
-            memcached_measure_end();
-        }
-        continue;
-    }
-
-
-        int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
-
-        if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
+        case END_TAG:
+            char end_msg[16];
+            err = MPI_Recv(end_msg, count, MPI_CHAR, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (err != MPI_SUCCESS) {
+                return READ_ERROR;
+            }
             char ack_msg[] = "done";
-
             MPI_Send(ack_msg, sizeof(ack_msg), MPI_CHAR, c->rank, END_TAG, MPI_COMM_WORLD);
-
             completed_clients++;
+
             if(completed_clients == client_size){
                 MPI_Finalize();
+                return READ_ERROR;
             }
             return READ_END_MESSAGE;
-        }
-        
-        if (err != MPI_SUCCESS) {
-            char err_str[MPI_MAX_ERROR_STRING];
-            int len;
-            MPI_Error_string(err, err_str, &len);
-            fprintf(stderr, "MPI_Recv error: %s\n", err_str);
-            fprintf(stderr, "MPI_SOURCE=%d, MPI_TAG=%d, MPI_ERROR=%d\n",
-            mpi_recv_status.MPI_SOURCE,
-            mpi_recv_status.MPI_TAG,
-            mpi_recv_status.MPI_ERROR);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
 
-        //MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
-        //printf("res : %d\n", res);
-        //int send_rank = mpi_recv_status.MPI_SOURCE;
+        default:
+            return READ_ERROR;
+            
+        }
 
         if(res > 0){
             pthread_mutex_lock(&c->thread->stats.mutex);
@@ -5908,91 +5906,76 @@ static int mpi_transmit_pre(struct mpi_conn_info *c, struct iovec *iovs, int iov
 
 
 ssize_t mpi_sendmsg(struct mpi_conn_info *c, int tid) {
-    struct timespec send_start, send_end;
-    struct timespec other_start, other_end;
- #if BREAKDOWN || OTHER_BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &other_start);
-        }
-#endif
-
     /*여기는 실제 transmit 함수 부분. 내가 그냥 conn_mwrite/conn_write 에서 바로 메세지를 보낼 수 있게 통합함.*/
 
-    struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
-    struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
-    int iovused = 0;
-    int rank;
+    // struct iovec iovs[IOV_MAX]; //IOV_MAX : 1024
+    // struct msghdr msg; //[yedam] 메세지 헤더(나중에 sendmsg에 필요함)
+    // int iovused = 0;
+    // int rank;
 
-    // init the msg.
-    memset(&msg, 0, sizeof(struct msghdr));
-    msg.msg_iov = iovs;
-    iovused = mpi_transmit_pre(c, iovs, iovused, tid);
+    // // init the msg.
+    // memset(&msg, 0, sizeof(struct msghdr));
+    // msg.msg_iov = iovs;
+    // iovused = mpi_transmit_pre(c, iovs, iovused, tid);
 
 
-    if (iovused == 0) { //여기 안들어감. iovused는 지금 처리해야하는 메세지 개수인데, 우리는 1개 들어오면 1개 처리하는 방식으로 일단 진행중이라서..
-        // // Avoid the syscall if we're only handling a noreply.
-        // // Return the response object.
-        mpi_transmit_post(c, 0); //일단 이렇게 주석처리해두고, 나중에 다시 확인하기
-        return TRANSMIT_COMPLETE;
-    }
+    // if (iovused == 0) { //여기 안들어감. iovused는 지금 처리해야하는 메세지 개수인데, 우리는 1개 들어오면 1개 처리하는 방식으로 일단 진행중이라서..
+    //     // // Avoid the syscall if we're only handling a noreply.
+    //     // // Return the response object.
+    //     mpi_transmit_post(c, 0); //일단 이렇게 주석처리해두고, 나중에 다시 확인하기
+    //     return TRANSMIT_COMPLETE;
+    // }
 
-    char mpi_send_buf[1024];
+    // char mpi_send_buf[1024];
     
-    ssize_t offset=0;
-    for (int i = 0; i < iovused; i++) {
-        struct iovec *iov = &msg.msg_iov[i];
-        memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
-        offset +=iov->iov_len;
-    }
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &other_end);
-        MPI_other_time += memcached_elapsed_ns(&other_start, &other_end);
-    }
-#endif
-#if OTHER_BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &other_end);
-        MPI_resp_time += memcached_elapsed_ns(&other_start, &other_end);
-    }
-#endif
-
-
-
+    // ssize_t offset=0;
+    // for (int i = 0; i < iovused; i++) {
+    //     struct iovec *iov = &msg.msg_iov[i];
+    //     memcpy(mpi_send_buf+offset, iov->iov_base, iov->iov_len);
+    //     offset +=iov->iov_len;
+    // }
 
     assert (c != NULL);
 
-    #if BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &send_start);
-        }
-    #endif
-    MPI_Send(mpi_send_buf, offset, MPI_CHAR, c->rank, SEND_TAG, MPI_COMM_WORLD);
-    #if BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &send_end);
-            MPI_send_time += memcached_elapsed_ns(&send_start, &send_end);
-        }
-    #endif
+    ssize_t offset = sizeof(c->bin_set_resp);
 
+    if (c->bin_resp_tag == SET_RESP_TAG) {
+        //printf("Server SET Send\n");
+        int err = MPI_Send(&c->bin_set_resp, sizeof(c->bin_set_resp), MPI_BYTE, c->rank, SET_RESP_TAG, MPI_COMM_WORLD);
 
- #if OTHER_BREAKDOWN
-        if (memcached_measure_enabled) {
-            clock_gettime(CLOCK_MONOTONIC, &other_start);
+        memset(&c->bin_set_resp, 0, sizeof(c->bin_set_resp));
+        c->bin_resp_tag = 0;
+
+        if (err != MPI_SUCCESS) {
+            c->state = conn_closing;
+            return TRANSMIT_HARD_ERROR;
         }
-#endif
+
+        return TRANSMIT_COMPLETE;
+    }
+
+    if (c->bin_resp_tag == GET_RESP_TAG) {
+        //printf("Server GET Send\n");
+        int err = MPI_Send(&c->bin_get_resp, sizeof(c->bin_get_resp), MPI_BYTE, c->rank, GET_RESP_TAG, MPI_COMM_WORLD);
+
+        if (err != MPI_SUCCESS) {
+            c->state = conn_closing;
+            return TRANSMIT_HARD_ERROR;
+        }
+
+        memset(&c->bin_get_resp, 0, sizeof(c->bin_get_resp));
+        c->bin_resp_tag = 0;
+
+        return TRANSMIT_COMPLETE;
+    }
+
     if (offset >= 0) { //여기 들어감
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.bytes_written += offset;
         pthread_mutex_unlock(&c->thread->stats.mutex);
         // Decrement any partial IOV's and complete any finished resp's.
         mpi_transmit_post(c, offset);
-#if OTHER_BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &other_end);
-        MPI_transmit_post_time += memcached_elapsed_ns(&other_start, &other_end);
-    }
-#endif
+
         if (c->resp_head) {
             return TRANSMIT_INCOMPLETE;
         } else {
@@ -6159,14 +6142,8 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
             break;
             
         case conn_parse_cmd:
-            #if BREAKDOWN
-                if (memcached_measure_enabled) {
-                    clock_gettime(CLOCK_MONOTONIC, &other_start);
-                }
-            #endif
             client->noreply = false;
-            
-            if (mpi_try_read_command_ascii(client, tid) == 0) {
+            if (mpi_try_read_command_bin(client) == 0) { 
                 /* we need more data! */
                 if (client->resp_head) {
                     // Buffered responses waiting, flush in the meantime.
@@ -6175,29 +6152,21 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     client->state = conn_waiting;
                 }
             }
-            #if BREAKDOWN
-                if (memcached_measure_enabled) {
-                    clock_gettime(CLOCK_MONOTONIC, &other_end);
-                    MPI_other_time+= memcached_elapsed_ns(&other_start, &other_end);
-                }
-            #endif
+            // if (mpi_try_read_command_ascii(client, tid) == 0) {
+            //     /* we need more data! */
+            //     if (client->resp_head) {
+            //         // Buffered responses waiting, flush in the meantime.
+            //         client->state = conn_mwrite;
+            //     } else {
+            //         client->state = conn_waiting;
+            //     }
+            // }
             break;
             
         case conn_nread:
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-    clock_gettime(CLOCK_MONOTONIC, &other_start);
-    }
-#endif
             if (client->rlbytes == 0) {
                 //printf("여기 들어가나?\n");
                 mpi_complete_nread_ascii(client);
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-    clock_gettime(CLOCK_MONOTONIC, &other_end);
-    MPI_other_time+= memcached_elapsed_ns(&other_start, &other_end);
-    }
-#endif
                 break;
             }
 
@@ -6207,12 +6176,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     fprintf(stderr, "Invalid rlbytes to read: len %d\n", client->rlbytes);
                 }
                 client->state = conn_closing;
-                #if BREAKDOWN
-                    if (memcached_measure_enabled) {
-                    clock_gettime(CLOCK_MONOTONIC, &other_end);
-                    MPI_other_time+= memcached_elapsed_ns(&other_start, &other_end);
-                    }
-                #endif
                 break;
             }
 
@@ -6226,12 +6189,6 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     client->rcurr += tocopy;
                     client->rbytes -= tocopy;
                     if (client->rlbytes == 0) {
-                        #if BREAKDOWN
-                            if (memcached_measure_enabled) {
-                            clock_gettime(CLOCK_MONOTONIC, &other_end);
-                            MPI_other_time+= memcached_elapsed_ns(&other_start, &other_end);
-                            }
-                        #endif
                         break;
                     }
                 }

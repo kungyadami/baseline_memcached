@@ -79,6 +79,89 @@
 #define END_TAG 400
 #define DPU_MEASURE_START_TAG 302
 #define DPU_MEASURE_END_TAG 303
+#define BIN_VALUE 1
+
+
+typedef enum {
+    BIN_GET = 100,
+    BIN_SET = 101,
+} server_bin_req_t; // server_bin_set_req_t, server_bin_get_req_t에 들어갈 cmd 값
+
+typedef enum {
+    BIN_STORED = 1,
+    BIN_NOT_STORED = 2,
+    BIN_END = 3,
+} server_bin_result_t; //STORED, NOT_STORED는 SET 성공 및 실패 응답용, END는 GET 실패 응답용
+
+typedef enum {
+    SET_REQ_TAG = 200,
+    GET_REQ_TAG = 300,
+    END_REQ_TAG = 400,
+    MEASURE_START_TAG = 302,
+    MEASURE_END_TAG = 303
+} server_bin_req_tag_t; 
+
+typedef enum {
+    SET_RESP_TAG = 201,
+    GET_RESP_TAG = 301,
+} server_bin_resp_tag_t;
+
+
+typedef struct {  
+    uint8_t cmd; //GET, SET 같은 
+    uint16_t key_len; //키 길이, client가 그냥 strlen(key)로 길이를 계산해서 여기다가 넣어주기
+    uint16_t flag; //구조체 정렬을 맞추거나 flag가 필요할 경우 만들어둔 공간
+    uint32_t hv;
+    int client_rank;
+    uint64_t request_index;
+    char key[64]; //실제 키 길이
+} server_bin_get_req_t;
+
+typedef struct {
+    uint8_t cmd;     // SET
+    uint16_t key_len;    
+    uint16_t value_len;
+    uint16_t flag;
+    uint32_t hv;
+    char key[64];
+    char value[64];
+} server_bin_set_req_t;
+
+typedef struct {
+    uint8_t result; //성공적으로 삽입했을 때에는 STORED, 실패했을 때에는 END 
+} server_bin_set_resp_t;
+
+typedef struct {
+    uint8_t result;     // DPU_VALUE(찾았을 때) DPU_FAILED (못 찾았을 때)
+    uint16_t key_len;    
+    uint16_t value_len;
+    uint16_t flag;
+    char key[64];
+    char value[64];
+} server_bin_get_resp_t;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if BREAKDOWN || OTHER_BREAKDOWN || HASH_BREAKDOWN
 extern bool memcached_measure_enabled;
@@ -1021,6 +1104,14 @@ struct mpi_conn_info{
     short cmd; /* current command being processed */
     int opaque;
     int keylen;
+
+    int bin_req_tag; //메세지 받았을 때, SET_REQ 인지, GET_REQ인지 구분하기 위함
+    int bin_resp_tag; //메세지를 보낼 때, 
+
+    server_bin_set_req_t bin_set_req;
+    server_bin_set_resp_t bin_set_resp;
+    server_bin_get_req_t bin_get_req;
+    server_bin_get_resp_t bin_get_resp;
 
 };
 

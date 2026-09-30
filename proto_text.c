@@ -4153,3 +4153,200 @@ struct timespec parse_start, parse_end;
     return 1;
 }
 #endif
+
+
+static void mpi_process_bin_set_command(struct mpi_conn_info *c,
+                                        const server_bin_set_req_t *req) {
+    item *it;
+    enum store_item_type ret;
+    uint64_t cas = 0;
+    int nbytes = 0;
+
+    assert(c != NULL);
+    assert(req != NULL);
+
+    // if (!mpi_resp_start(c)) {
+    //     c->state = conn_closing;
+    //     return;
+    // }
+
+    if (req->key_len == 0 || req->key_len > KEY_MAX_LENGTH ||
+        req->key_len > sizeof(req->key) ||
+        req->value_len > sizeof(req->value)) {
+        mpi_out_string(c, "CLIENT_ERROR bad binary set request");
+        return;
+    }
+
+    /*
+     * memcached item value internally includes the trailing "\r\n",
+     * so allocate value_len + 2 and append CRLF before store_item().
+     */
+    int vlen = req->value_len + 2;
+    rel_time_t exptime = 0; /* 현재 구조체엔 exptime 필드가 없으므로 no-expire */
+    client_flags_t flags = (client_flags_t)req->flag;
+
+    it = item_alloc(req->key, req->key_len, flags, exptime, vlen);
+    if (it == NULL) {
+        if (!item_size_ok(req->key_len, flags, vlen)) {
+            mpi_out_string(c, "SERVER_ERROR object too large for cache");
+            pthread_mutex_lock(&c->thread->stats.mutex);
+            c->thread->stats.store_too_large++;
+            pthread_mutex_unlock(&c->thread->stats.mutex);
+        } else {
+            mpi_out_string(c, "SERVER_ERROR out of memory storing object");
+            pthread_mutex_lock(&c->thread->stats.mutex);
+            c->thread->stats.store_no_memory++;
+            pthread_mutex_unlock(&c->thread->stats.mutex);
+        }
+        return;
+    }
+
+    memcpy(ITEM_data(it), req->value, req->value_len);
+    memcpy(ITEM_data(it) + req->value_len, "\r\n", 2);
+
+    c->thread->cur_sfd = c->rank;
+    ret = store_item(it, NREAD_SET, c->thread, &nbytes, &cas, get_cas_id(), CAS_NO_STALE);
+
+    item_remove(it);
+#if MEMORY_USAGE    
+    if (ret == STORED) {
+        bin_set_count++;
+        if (bin_set_count == 100000) {
+            size_t total_malloced = slabs_total_malloced();
+            STATS_LOCK();
+            fprintf(stderr,
+                    "[MEM_USAGE] set_count=%llu curr_items=%llu curr_bytes=%llu hash_bytes=%llu total_item_hash=%llu total_malloced=%llu\n",
+                    (unsigned long long)bin_set_count,
+                    (unsigned long long)stats_state.curr_items,
+                    (unsigned long long)stats_state.curr_bytes,
+                    (unsigned long long)stats_state.hash_bytes,
+                    (unsigned long long)(stats_state.curr_bytes + stats_state.hash_bytes),
+                    (unsigned long long)total_malloced);
+            STATS_UNLOCK();
+        }
+    }
+#endif
+
+    switch (ret) {
+    case STORED:
+        c->bin_set_resp.result = BIN_STORED;      /* 또는 DPU_STORED 같은 값 */
+        break;
+    case EXISTS:
+        c->bin_set_resp.result = EXISTS;
+        break;
+    case NOT_FOUND:
+        c->bin_set_resp.result = NOT_FOUND;
+        break;
+    case NOT_STORED:
+    default:
+        c->bin_set_resp.result = BIN_NOT_STORED;
+        break;
+    }
+
+    c->state = conn_mwrite;
+}
+
+
+static void mpi_process_bin_get_command(struct mpi_conn_info *c, const server_bin_get_req_t *req) {
+    item *it;
+    bool overflow = false;
+    uint32_t hv;
+
+    assert(c != NULL);
+    assert(req != NULL);
+
+    //응답 메세지 초기화
+    memset(&c->bin_get_resp, 0, sizeof(c->bin_get_resp));
+
+    //오류 거르기
+    if (req->key_len == 0 || req->key_len > KEY_MAX_LENGTH ||  req->key_len > sizeof(req->key)) {
+        c->bin_get_resp.result = BIN_END;
+        c->bin_resp_tag = GET_RESP_TAG;
+        c->state = conn_mwrite;
+        return;
+    }
+
+    // hash table lookup
+    hv = hash(req->key, req->key_len);
+    it = limited_get(req->key, req->key_len, c->thread, 0, false, DO_UPDATE, &overflow);
+
+    if (it == NULL) {
+        c->bin_get_resp.result = BIN_END;
+
+        pthread_mutex_lock(&c->thread->stats.mutex);
+        c->thread->stats.get_misses++;
+        c->thread->stats.get_cmds++;
+        pthread_mutex_unlock(&c->thread->stats.mutex);
+
+        c->bin_resp_tag = GET_RESP_TAG;
+        c->state = conn_mwrite;
+        return;
+    }
+
+    //key 정상적으로 찾고, 응답 준비
+    int value_len = it->nbytes;
+
+    if (value_len >= 2 && memcmp(ITEM_data(it) + value_len - 2, "\r\n", 2) == 0) {
+        value_len -= 2;
+    }
+
+    //오류 걸러내기
+    if (value_len > (int)sizeof(c->bin_get_resp.value) || req->key_len > sizeof(c->bin_get_resp.key)) {
+        item_remove(it);
+        c->bin_get_resp.result = BIN_END;
+        c->bin_resp_tag = GET_RESP_TAG;
+        c->state = conn_mwrite;
+        return;
+    }
+
+    //get 응답 준비
+    c->bin_get_resp.result = BIN_VALUE;
+    c->bin_get_resp.key_len = req->key_len;
+    c->bin_get_resp.value_len = value_len;
+
+    if (it->it_flags & ITEM_CFLAGS) {
+        c->bin_get_resp.flag = *((client_flags_t *)ITEM_suffix(it));
+    } else {
+        c->bin_get_resp.flag = 0;
+    }
+
+
+    memcpy(c->bin_get_resp.key, req->key, req->key_len);
+    memcpy(c->bin_get_resp.value, ITEM_data(it), value_len);
+
+    pthread_mutex_lock(&c->thread->stats.mutex);
+    c->thread->stats.lru_hits[it->slabs_clsid]++;
+    c->thread->stats.get_cmds++;
+    pthread_mutex_unlock(&c->thread->stats.mutex);
+
+    item_remove(it);
+
+    c->bin_resp_tag = GET_RESP_TAG;
+    c->state = conn_mwrite;
+}
+
+
+
+int mpi_try_read_command_bin(struct mpi_conn_info *c) {
+
+    switch (c->bin_req_tag) {
+        case SET_REQ_TAG:
+            mpi_process_bin_set_command(c, &c->bin_set_req); //set 연산 수행
+            c->bin_resp_tag = SET_RESP_TAG;
+            memset(&c->bin_set_req, 0, sizeof(c->bin_set_req)); //다음 요청을 받기 위해 memset
+            c->bin_req_tag = 0;
+            return 1;
+
+        case GET_REQ_TAG:
+            mpi_process_bin_get_command(c, &c->bin_get_req); //get 연산 수행
+            //memset(&c->bin_get_req, 0, sizeof(c->bin_get_req));  //다음 요청을 받기 위해 memset
+            c->bin_req_tag = 0;
+            return 1;
+
+        default:
+            c->bin_set_resp.result = BIN_NOT_STORED;
+            memset(&c->bin_set_req, 0, sizeof(c->bin_set_req));
+            c->state = conn_mwrite;
+            return 1;
+    }
+}
