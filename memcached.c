@@ -108,7 +108,8 @@ enum try_read_result {
     READ_DATA_RECEIVED,
     READ_NO_DATA_RECEIVED,
     READ_ERROR,            /** an error occurred (on the socket) (or client closed connection) */
-    READ_MEMORY_ERROR      /** failed to allocate more memory */
+    READ_MEMORY_ERROR,      /** failed to allocate more memory */
+    READ_END_MESSAGE
 };
 
 static int try_read_command_negotiate(conn *c);
@@ -5619,9 +5620,6 @@ static void mpi_conn_close(struct mpi_conn_info *c) {
 }
 
 static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){ 
-#if ENABLE_PRINT
-     printf("memcached/mpi_try_read_network, client->rbytes : %d | settings.oldest_live : %d\n",  c->rbytes, settings.oldest_live);
-#endif
     enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
     int res;
     struct timespec recv_start, recv_end;
@@ -5639,18 +5637,11 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         unsigned long probe_elapsed = 0;
         unsigned long recv_elapsed = 0;
 
-#if BREAKDOWN
-    if (memcached_measure_enabled) {
-        clock_gettime(CLOCK_MONOTONIC, &recv_start);
-    }
-#endif
         MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &mpi_recv_status);
         MPI_Get_count(&mpi_recv_status, MPI_CHAR, &res);
 
 
-//#if BREAKDOWN || OTHER_BREAKDOWN
     if (mpi_recv_status.MPI_TAG == DPU_MEASURE_START_TAG || mpi_recv_status.MPI_TAG == DPU_MEASURE_END_TAG) {
-        //printf("서버가 클라이언트로부터 measure_start를 받음\n");
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         
         if (err != MPI_SUCCESS) {
@@ -5668,29 +5659,22 @@ static enum try_read_result mpi_try_read_network(struct mpi_conn_info* c){
         }
         continue;
     }
-//#endif
+
 
         int err = MPI_Recv(c->rbuf, res, MPI_CHAR, mpi_recv_status.MPI_SOURCE, mpi_recv_status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        //printf("server, MPI_Recv(), %d | message : %s\n", mpi_recv_status.MPI_SOURCE, c->rbuf);
-#if BREAKDOWN
-    if (memcached_measure_enabled && mpi_recv_status.MPI_TAG != END_TAG) {
-        clock_gettime(CLOCK_MONOTONIC, &recv_end);
-        MPI_recv_time += memcached_elapsed_ns(&recv_start, &recv_end);
-    }
-#endif
 
         c->rank = mpi_recv_status.MPI_SOURCE; //메세지 요청을 보낸 랭크 값을 저장
 
-        //memcpy(c->raw_rbuf, c->rbuf, res);
-
         if(mpi_recv_status.MPI_TAG == END_TAG){ //연산이 종료된 클라이언트는 마지막으로 END_TAG가 담긴 메세지를 전송
-#if BREAKDOWN
-            memcached_measure_end();
-#endif
+            char ack_msg[] = "done";
+
+            MPI_Send(ack_msg, sizeof(ack_msg), MPI_CHAR, c->rank, END_TAG, MPI_COMM_WORLD);
+
             completed_clients++;
             if(completed_clients == client_size){
-                return READ_ERROR;
+                MPI_Finalize();
             }
+            return READ_END_MESSAGE;
         }
         
         if (err != MPI_SUCCESS) {
@@ -6167,6 +6151,9 @@ static void mpi_drive_machine(struct mpi_conn_info *client, int tid){
                     break;
                 case READ_MEMORY_ERROR: /* Failed to allocate more memory */ //여기 안들어감
                     /* State already set by try_read_network */
+                    break;
+                case READ_END_MESSAGE:
+                    client->state = conn_read;
                     break;
             }
             break;
@@ -6818,7 +6805,7 @@ int main (int argc, char **argv) {
     bool use_slab_sizes = false;
     char *slab_sizes_unparsed = NULL;
     bool slab_chunk_size_changed = false;
-    printf("나 서버\n");
+    //printf("나 서버\n");
     // struct for restart code. Initialized up here so we can curry
     // important settings to save or validate.
     struct _mc_meta_data *meta = malloc(sizeof(struct _mc_meta_data));
